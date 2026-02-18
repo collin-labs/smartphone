@@ -1,0 +1,146 @@
+{
+    "token": "",
+    "base": "vrpex",
+    "client": {
+        "bankType": "fleeca",
+        "uploadServer": "http:///api.elitenetworkgg.com.br/smartphone/uploadServer/index.php",
+        "allowUnsafeURL": true,
+        "videoServer": "ws://cdn.metacity-gg.com:8080/meta",
+        "case": "iphonexs",
+        "isAndroid": false,
+        "db_driver": "oxmysql",
+        "useGameClock": true,
+        "phone_template": "XXX-XXX",
+        "backgroundURL": "http://sv2.plnetworking.com/smartphone/BG-04.png",
+        "tinderLogo": "http://sv2.plnetworking.com/smartphone/tindersemfundo.png",
+        "disabledApps": ["truco"],
+        "apps": {
+            "bank": {
+                "name": "Bank",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/FleecaBank.png"
+            },
+            "whatsapp": {
+                "name": "ExWpp",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/ChatZap.png"
+            },
+            "instagram": {
+                "name": "InstaPic",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Clickgram.png"
+            },
+            "tinder": {
+                "name": "Relations",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Xonei.png"
+            },
+            "casino": {
+                "name": "Casino",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Apostai.png"
+            },
+            "olx": {
+                "name": "Usados",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Desapega.png"
+            },
+            "paypal": {
+                "name": "PayPou",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/LokoPay1.png"
+            },
+            "truco": {
+                "name": "Cartas"
+            },
+            "twitter": {
+                "name": "BlueBird",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Tilte.png"
+            },
+            "minesweeper": {
+                "name": "Campo Minado",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/CampoExplosivo.png"
+            },
+            "gallery": {
+                "name": "Galeria",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Fotos.png"
+            },
+            "settings": {
+                "name": "Ajustes",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Configuraçõesv2.png"
+            },
+            "sms": {
+                "name": "Mensagens",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Mensagens1.png"
+            },
+            "tor": {
+                "name": "Pirate Bay",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/DeepWeb.png"
+            },
+            "contacts": {
+                "name": "Contatos",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Telefone2.png"
+            },
+            "calculator": {
+                "name": "Calculadora",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Calculadora1.png"
+            },
+            "notes": {
+                "name": "Notas",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Notes.png"
+            },
+            "uber": {
+                "name": "Notas",
+                "icon": "http://api.elitenetworkgg.com.br/oLokoGroup/icons/Drive.png"
+            }
+        }
+    },
+    "call_mode": "pma-voice",
+    "webhookURL": "webhook",
+    "instagram_verify": "verificado.permissao",
+    "instagram_accounts": {
+        "*": 1,
+        "vip.permissao": 2
+    },
+    "moderator": "suporte.permissao",
+    "item": "celular",
+    "services": [
+        {
+            "name": "Policia",
+            "number": "190",
+            "permission": "policia.permissao",
+            "dev": true
+        },
+        {
+            "name": "Emergência",
+            "number": "192",
+            "permission": "hospital.permissao",
+            "dev": true
+        },
+        {
+            "name": "Mecânica",
+            "number": "150",
+            "permission": "mecanico.permissao",
+            "dev": true
+        },
+        {
+            "name": "Restaurantes",
+            "number": "118",
+            "permission": "comida.permissao",
+            "dev": true
+        },
+        {
+            "name": "Advogado",
+            "number": "177",
+            "permission": "tribunal.permissao",
+            "dev": true
+        },
+        {
+            "name": "Fotografo",
+            "number": "111",
+            "permission": "cam.permissao",
+            "dev": true
+        }
+    ],
+    "premium_apps": {
+        "weazel": {
+            "tags": [
+                "Loko News"
+            ],
+            "permission": "jornal.permissao"
+        }
+    }
+}
