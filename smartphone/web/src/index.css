@@ -141,3 +141,9 @@ html, body, #root {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* Dynamic Island animation */
+@keyframes diExpand {
+  from { width: 120px; opacity: 0; }
+  to { width: 120px; opacity: 1; }
+}

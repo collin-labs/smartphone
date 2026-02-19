@@ -56,6 +56,43 @@ export function SettingsApp({ settings, onSettingsChange }) {
         </SettingsRow>
       </div>
 
+      {/* Security - PIN */}
+      <div className="flex flex-col gap-[1px] overflow-hidden rounded-xl">
+        <div className="flex flex-col gap-3 border-b border-white/[0.04] bg-[#1c1c1e] p-4">
+          <div className="flex items-center gap-3">
+            <span className="text-[18px]">🔒</span>
+            <span className="flex-1 text-[15px] text-white">PIN de bloqueio</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="password"
+              maxLength={4}
+              placeholder="4 dígitos"
+              value={settings.pin || ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/\D/g,'').slice(0,4);
+                onSettingsChange({ ...settings, pin: val || null });
+                if (val.length === 4 || val.length === 0) {
+                  fetchBackend('profile_update', { pin: val || null });
+                }
+              }}
+              className="flex-1 rounded-lg bg-black/40 px-3 py-2 text-sm text-white outline-none"
+              style={{ fontFamily:'monospace', letterSpacing:8 }}
+            />
+            {settings.pin && (
+              <button
+                onClick={() => {
+                  onSettingsChange({ ...settings, pin: null });
+                  fetchBackend('profile_update', { pin: null });
+                }}
+                className="rounded-lg bg-red-500/20 px-3 py-2 text-xs text-red-400"
+              >Remover</button>
+            )}
+          </div>
+          <span className="text-[11px] text-white/30">Deixe vazio para desbloquear sem PIN</span>
+        </div>
+      </div>
+
       {/* Sliders section */}
       <div className="flex flex-col gap-[1px] overflow-hidden rounded-xl">
         <div className="flex flex-col gap-3 border-b border-white/[0.04] bg-[#1c1c1e] p-4">

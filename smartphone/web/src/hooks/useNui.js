@@ -18,18 +18,23 @@ const resourceName = isInGame ? 'smartphone' : 'smartphone';
  * @param {Array} args - Argumentos da função
  * @returns {Promise<any>} Resultado do server
  */
-export async function fetchBackend(member, args = []) {
+export async function fetchBackend(member, args = {}) {
     if (!isInGame) {
         console.log(`[DEV] backend.${member}(`, args, ')');
         return getMockResponse(member, args);
     }
 
     try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
         const response = await fetch(`https://${resourceName}/backend`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ member, args })
+            body: JSON.stringify({ member, args }),
+            signal: controller.signal
         });
+        clearTimeout(timeout);
         return await response.json();
     } catch (error) {
         console.error(`[NUI] Erro ao chamar ${member}:`, error);

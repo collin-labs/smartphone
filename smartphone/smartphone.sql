@@ -72,8 +72,7 @@ CREATE TABLE IF NOT EXISTS smartphone_sms_participants (
     phone VARCHAR(20) NOT NULL,
     unread_count INT DEFAULT 0,
     PRIMARY KEY (conversation_id, phone),
-    INDEX idx_phone (phone),
-    FOREIGN KEY (conversation_id) REFERENCES smartphone_sms_conversations(id) ON DELETE CASCADE
+    INDEX idx_phone (phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_sms_messages (
@@ -84,8 +83,7 @@ CREATE TABLE IF NOT EXISTS smartphone_sms_messages (
     media VARCHAR(255) DEFAULT NULL,
     is_deleted TINYINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_conversation (conversation_id),
-    FOREIGN KEY (conversation_id) REFERENCES smartphone_sms_conversations(id) ON DELETE CASCADE
+    INDEX idx_conversation (conversation_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
@@ -104,8 +102,7 @@ CREATE TABLE IF NOT EXISTS smartphone_whatsapp_participants (
     chat_id INT NOT NULL,
     phone VARCHAR(20) NOT NULL,
     unread_count INT DEFAULT 0,
-    PRIMARY KEY (chat_id, phone),
-    FOREIGN KEY (chat_id) REFERENCES smartphone_whatsapp_chats(id) ON DELETE CASCADE
+    PRIMARY KEY (chat_id, phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_whatsapp_messages (
@@ -117,8 +114,7 @@ CREATE TABLE IF NOT EXISTS smartphone_whatsapp_messages (
     media VARCHAR(255) DEFAULT NULL,
     is_read TINYINT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_chat (chat_id),
-    FOREIGN KEY (chat_id) REFERENCES smartphone_whatsapp_chats(id) ON DELETE CASCADE
+    INDEX idx_chat (chat_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
@@ -140,15 +136,13 @@ CREATE TABLE IF NOT EXISTS smartphone_instagram_posts (
     profile_id INT NOT NULL,
     image VARCHAR(255) NOT NULL,
     caption TEXT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (profile_id) REFERENCES smartphone_instagram_profiles(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_instagram_likes (
     profile_id INT NOT NULL,
     post_id INT NOT NULL,
-    PRIMARY KEY (profile_id, post_id),
-    FOREIGN KEY (post_id) REFERENCES smartphone_instagram_posts(id) ON DELETE CASCADE
+    PRIMARY KEY (profile_id, post_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_instagram_comments (
@@ -156,8 +150,7 @@ CREATE TABLE IF NOT EXISTS smartphone_instagram_comments (
     post_id INT NOT NULL,
     profile_id INT NOT NULL,
     text VARCHAR(500) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (post_id) REFERENCES smartphone_instagram_posts(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_instagram_follows (
@@ -196,15 +189,13 @@ CREATE TABLE IF NOT EXISTS smartphone_twitter_tweets (
     image VARCHAR(255) DEFAULT NULL,
     reply_to INT DEFAULT NULL,
     visible TINYINT DEFAULT 1,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (profile_id) REFERENCES smartphone_twitter_profiles(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_twitter_likes (
     profile_id INT NOT NULL,
     tweet_id INT NOT NULL,
-    PRIMARY KEY (profile_id, tweet_id),
-    FOREIGN KEY (tweet_id) REFERENCES smartphone_twitter_tweets(id) ON DELETE CASCADE
+    PRIMARY KEY (profile_id, tweet_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
@@ -234,16 +225,14 @@ CREATE TABLE IF NOT EXISTS smartphone_tiktok_videos (
     views_count INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_profile (profile_id),
-    INDEX idx_created (created_at),
-    FOREIGN KEY (profile_id) REFERENCES smartphone_tiktok_profiles(id) ON DELETE CASCADE
+    INDEX idx_created (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_tiktok_likes (
     profile_id INT NOT NULL,
     video_id INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (profile_id, video_id),
-    FOREIGN KEY (video_id) REFERENCES smartphone_tiktok_videos(id) ON DELETE CASCADE
+    PRIMARY KEY (profile_id, video_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_tiktok_comments (
@@ -251,8 +240,7 @@ CREATE TABLE IF NOT EXISTS smartphone_tiktok_comments (
     video_id INT NOT NULL,
     profile_id INT NOT NULL,
     comment TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (video_id) REFERENCES smartphone_tiktok_videos(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_tiktok_follows (
@@ -297,8 +285,7 @@ CREATE TABLE IF NOT EXISTS smartphone_tinder_messages (
     match_id INT NOT NULL,
     sender_id INT NOT NULL,
     text TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (match_id) REFERENCES smartphone_tinder_matches(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================
@@ -411,8 +398,7 @@ CREATE TABLE IF NOT EXISTS smartphone_ifood_menu_items (
     restaurant_id INT NOT NULL,
     name VARCHAR(100) NOT NULL,
     price DECIMAL(10,2) NOT NULL,
-    photo VARCHAR(255) DEFAULT NULL,
-    FOREIGN KEY (restaurant_id) REFERENCES smartphone_ifood_restaurants(id) ON DELETE CASCADE
+    photo VARCHAR(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_ifood_orders (
@@ -494,8 +480,7 @@ CREATE TABLE IF NOT EXISTS smartphone_tor_members (
     channel_id INT NOT NULL,
     phone VARCHAR(20) NOT NULL,
     is_owner TINYINT DEFAULT 0,
-    PRIMARY KEY (channel_id, phone),
-    FOREIGN KEY (channel_id) REFERENCES smartphone_tor_channels(id) ON DELETE CASCADE
+    PRIMARY KEY (channel_id, phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_tor_messages (
@@ -503,8 +488,7 @@ CREATE TABLE IF NOT EXISTS smartphone_tor_messages (
     channel_id INT NOT NULL,
     sender_phone VARCHAR(20) NOT NULL,
     message TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (channel_id) REFERENCES smartphone_tor_channels(id) ON DELETE CASCADE
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS smartphone_tor_store (
@@ -529,3 +513,198 @@ CREATE TABLE IF NOT EXISTS smartphone_service_calls (
     status ENUM('pending','responded','closed') DEFAULT 'pending',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Uber rides
+CREATE TABLE IF NOT EXISTS smartphone_uber_rides (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  passenger_id INT NOT NULL,
+  passenger_phone VARCHAR(20),
+  driver_id INT DEFAULT NULL,
+  driver_phone VARCHAR(20) DEFAULT NULL,
+  destination VARCHAR(200) NOT NULL,
+  ride_type VARCHAR(20) DEFAULT 'uberx',
+  estimated_price INT DEFAULT 0,
+  price INT DEFAULT 0,
+  status ENUM('waiting','accepted','completed','cancelled') DEFAULT 'waiting',
+  rating TINYINT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_passenger (passenger_id),
+  INDEX idx_driver (driver_id),
+  INDEX idx_status (status)
+);
+
+-- Waze history
+CREATE TABLE IF NOT EXISTS smartphone_waze_history (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  destination VARCHAR(200) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+
+-- Waze reports
+CREATE TABLE IF NOT EXISTS smartphone_waze_reports (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  type VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_time (created_at)
+);
+
+-- Weazel News articles
+CREATE TABLE IF NOT EXISTS smartphone_weazel_articles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  author_id INT NOT NULL,
+  author_name VARCHAR(50),
+  title VARCHAR(200) NOT NULL,
+  body TEXT,
+  category VARCHAR(30) DEFAULT 'Cidade',
+  is_breaking TINYINT DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_breaking (is_breaking)
+);
+
+-- Yellow Pages
+CREATE TABLE IF NOT EXISTS smartphone_yellowpages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  category VARCHAR(30) DEFAULT 'outro',
+  phone VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_cat (category)
+);
+
+-- PayPal transactions
+CREATE TABLE IF NOT EXISTS smartphone_paypal_transactions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sender_id INT NOT NULL,
+  sender_phone VARCHAR(20),
+  receiver_id INT NOT NULL,
+  receiver_phone VARCHAR(20),
+  amount INT NOT NULL,
+  note VARCHAR(200),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_sender (sender_id),
+  INDEX idx_receiver (receiver_id)
+);
+
+-- iFood orders
+CREATE TABLE IF NOT EXISTS smartphone_ifood_orders (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  restaurant VARCHAR(100) NOT NULL,
+  items TEXT,
+  total INT DEFAULT 0,
+  fee INT DEFAULT 0,
+  status ENUM('confirmed','preparing','delivering','delivered','cancelled') DEFAULT 'confirmed',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+
+-- Tor messages
+CREATE TABLE IF NOT EXISTS smartphone_tor_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  channel VARCHAR(30) NOT NULL,
+  user_id INT NOT NULL,
+  alias VARCHAR(50),
+  message TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_channel (channel)
+);
+
+-- Tor store
+CREATE TABLE IF NOT EXISTS smartphone_tor_store (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  price INT DEFAULT 0,
+  available TINYINT DEFAULT 1
+);
+
+-- WhatsApp group members
+CREATE TABLE IF NOT EXISTS smartphone_whatsapp_group_members (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  chat_id INT NOT NULL,
+  user_phone VARCHAR(20) NOT NULL,
+  joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_chat (chat_id),
+  INDEX idx_phone (user_phone)
+);
+
+-- Grindr profiles
+CREATE TABLE IF NOT EXISTS smartphone_grindr_profiles (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL UNIQUE,
+  name VARCHAR(50) NOT NULL,
+  bio TEXT,
+  avatar VARCHAR(10) DEFAULT '😎',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+
+-- Grindr taps
+CREATE TABLE IF NOT EXISTS smartphone_grindr_taps (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  sender_id INT NOT NULL,
+  target_id INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Grindr chats
+CREATE TABLE IF NOT EXISTS smartphone_grindr_chats (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user1_id INT NOT NULL,
+  user1_name VARCHAR(50),
+  user1_avatar VARCHAR(10),
+  user2_id INT NOT NULL,
+  user2_name VARCHAR(50),
+  user2_avatar VARCHAR(10),
+  last_message TEXT,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_users (user1_id, user2_id)
+);
+
+-- Grindr messages
+CREATE TABLE IF NOT EXISTS smartphone_grindr_messages (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  chat_id INT NOT NULL,
+  sender_id INT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_chat (chat_id)
+);
+
+-- Gallery photos
+CREATE TABLE IF NOT EXISTS smartphone_gallery (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  color VARCHAR(10),
+  emoji VARCHAR(10),
+  label VARCHAR(100),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+-- WhatsApp group support columns
+ALTER TABLE smartphone_whatsapp_chats ADD COLUMN IF NOT EXISTS is_group TINYINT DEFAULT 0;
+ALTER TABLE smartphone_whatsapp_chats ADD COLUMN IF NOT EXISTS group_name VARCHAR(100);
+ALTER TABLE smartphone_whatsapp_chats ADD COLUMN IF NOT EXISTS created_by INT;
+ALTER TABLE smartphone_whatsapp_messages ADD COLUMN IF NOT EXISTS sender_name VARCHAR(50);
+ALTER TABLE smartphone_whatsapp_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'text';
+
+
+-- Gallery
+CREATE TABLE IF NOT EXISTS smartphone_gallery (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  url TEXT DEFAULT '',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_user (user_id)
+);
+
+-- App Store installed apps
+CREATE TABLE IF NOT EXISTS smartphone_appstore (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT UNIQUE NOT NULL,
+  installed_apps TEXT
+);

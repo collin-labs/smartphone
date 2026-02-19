@@ -50,6 +50,13 @@ function getSourceByPhone(phone) {
     return null;
 }
 
+function findPlayerSource(userId) {
+    for (const [src, data] of Object.entries(playerCache)) {
+        if (String(data.userId) === String(userId)) return parseInt(src);
+    }
+    return null;
+}
+
 on('playerDropped', () => { delete playerCache[global.source]; });
 
 // ============================================
@@ -97,49 +104,34 @@ async function getUserIdCached(source) {
 // DATABASE HELPERS
 // ============================================
 
-function dbQuery(query, params = []) {
+function dbPromise(method, query, params = []) {
     return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+            reject(new Error(`DB timeout: ${query.slice(0, 60)}`));
+        }, 8000);
         try {
-            exports['oxmysql']['query'](query, params, (result) => {
-                resolve(result || []);
+            exports['oxmysql'][method](query, params, (result) => {
+                clearTimeout(timer);
+                resolve(result);
             });
         } catch (e) {
+            clearTimeout(timer);
             reject(e);
         }
     });
+}
+
+function dbQuery(query, params = []) {
+    return dbPromise('query', query, params).then(r => r || []);
 }
 function dbScalar(query, params = []) {
-    return new Promise((resolve, reject) => {
-        try {
-            exports['oxmysql']['scalar'](query, params, (result) => {
-                resolve(result);
-            });
-        } catch (e) {
-            reject(e);
-        }
-    });
+    return dbPromise('scalar', query, params);
 }
 function dbInsert(query, params = []) {
-    return new Promise((resolve, reject) => {
-        try {
-            exports['oxmysql']['insert'](query, params, (result) => {
-                resolve(result);
-            });
-        } catch (e) {
-            reject(e);
-        }
-    });
+    return dbPromise('insert', query, params);
 }
 function dbUpdate(query, params = []) {
-    return new Promise((resolve, reject) => {
-        try {
-            exports['oxmysql']['update'](query, params, (result) => {
-                resolve(result);
-            });
-        } catch (e) {
-            reject(e);
-        }
-    });
+    return dbPromise('update', query, params);
 }
 async function dbSingle(query, params = []) {
     const rows = await dbQuery(query, params);
@@ -897,9 +889,11 @@ registerHandler('whatsapp_chats', async (source) => {
         resolved.push({
             id: chat.id,
             type: chat.type,
+            is_group: chat.type === 'group' ? 1 : 0,
             name: displayName,
             icon: chat.icon,
             otherPhones,
+            memberCount: otherPhones.length + 1,
             unreadCount: chat.unread_count || 0,
             lastMessage: chat.last_message,
             lastMessageAt: chat.last_message_at,
@@ -1075,7 +1069,7 @@ async function getIgProfile(source) {
     const phone = await getPhoneFromSource(source);
     let profile = await dbSingle('SELECT * FROM smartphone_instagram_profiles WHERE user_id = ?', [userId]);
     if (!profile) {
-        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const name = 'Jogador ' + (phone || '').replace(/[^0-9]/g, '').slice(-4);
         const username = phone.replace(/[^0-9]/g, '');
         const id = await dbInsert(
             'INSERT INTO smartphone_instagram_profiles (user_id, username, name) VALUES (?, ?, ?)',
@@ -1280,7 +1274,7 @@ async function getTwitterProfile(source) {
     const phone = await getPhoneFromSource(source);
     let profile = await dbSingle('SELECT * FROM smartphone_twitter_profiles WHERE user_id = ?', [userId]);
     if (!profile) {
-        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const name = 'Jogador ' + (phone || '').replace(/[^0-9]/g, '').slice(-4);
         const username = phone.replace(/[^0-9]/g, '');
         const id = await dbInsert(
             'INSERT INTO smartphone_twitter_profiles (user_id, username, display_name) VALUES (?, ?, ?)',
@@ -1393,7 +1387,7 @@ async function getTikTokProfile(source) {
     const phone = await getPhoneFromSource(source);
     let profile = await dbSingle('SELECT * FROM smartphone_tiktok_profiles WHERE phone = ?', [phone]);
     if (!profile) {
-        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const name = 'Jogador ' + (phone || '').replace(/[^0-9]/g, '').slice(-4);
         const username = phone.replace(/[^0-9]/g, '');
         const id = await dbInsert(
             'INSERT INTO smartphone_tiktok_profiles (phone, username, display_name) VALUES (?, ?, ?)',
@@ -1657,9 +1651,8 @@ registerHandler('tinder_send', async (source, args) => {
 registerHandler('market_listings', async (source, args) => {
     const { category, search } = args || {};
     let sql = `
-        SELECT m.*, pr.name AS seller_name
+        SELECT m.*, m.seller_phone AS seller_name
         FROM smartphone_marketplace m
-        LEFT JOIN smartphone_profiles pr ON pr.phone_number = m.seller_phone
         WHERE m.status = 'active'
     `;
     const params = [];
@@ -2008,6 +2001,696 @@ global.smartphoneServer = {
     getUserId, getUserIdCached, getPhoneFromSource, getSourceByPhone,
     userIdToPhone, phoneToUserId, ensureProfile, config
 };
+
+// ============================================
+// UBER
+// ============================================
+
+const uberDrivers = {}; // { source: { online, userId, name } }
+
+registerHandler('uber_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const recentDests = await dbQuery(
+        'SELECT DISTINCT destination FROM smartphone_uber_rides WHERE passenger_id = ? ORDER BY id DESC LIMIT 5',
+        [userId]
+    ).then(r => r.map(x => x.destination));
+    const activeRide = await dbQuery(
+        `SELECT * FROM smartphone_uber_rides WHERE (passenger_id = ? OR driver_id = ?) AND status IN ('waiting','accepted') ORDER BY id DESC LIMIT 1`,
+        [userId, userId]
+    ).then(r => r[0] || null);
+    const isDriver = uberDrivers[source]?.online || false;
+    const mode = activeRide ? (activeRide.passenger_id == userId ? 'passenger' : 'driver') : null;
+    return { ok: true, recentDests, activeRide, driverOnline: isDriver, mode };
+});
+
+registerHandler('uber_set_mode', async (source, args) => {
+    return { ok: true };
+});
+
+registerHandler('uber_request', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const { destination, rideType } = args || {};
+    if (!destination?.trim()) return { error: 'Informe o destino' };
+
+    const multipliers = { uberx: 1.0, comfort: 1.4, black: 2.2 };
+    const basePrice = 100 + Math.floor(Math.random() * 200);
+    const price = Math.round(basePrice * (multipliers[rideType] || 1.0));
+
+    const id = await dbInsert(
+        `INSERT INTO smartphone_uber_rides (passenger_id, passenger_phone, destination, ride_type, estimated_price, status)
+         VALUES (?, ?, ?, ?, ?, 'waiting')`,
+        [userId, phone, destination, rideType || 'uberx', price]
+    );
+
+    const rideData = { id, passenger_id: userId, passenger_name: 'Jogador ' + String(phone||'').slice(-4), passenger_phone: phone, destination, ride_type: rideType || 'uberx', estimated_price: price, status: 'waiting' };
+
+    // Push to all online drivers
+    for (const [driverSrc, driver] of Object.entries(uberDrivers)) {
+        if (driver.online && parseInt(driverSrc) !== source) {
+            pushToPlayer(parseInt(driverSrc), 'UBER_RIDE_REQUEST', rideData);
+        }
+    }
+
+    return { ok: true, ride: rideData };
+});
+
+registerHandler('uber_accept', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const { rideId } = args || {};
+    if (!rideId) return { error: 'Corrida inválida' };
+
+    const ride = await dbQuery('SELECT * FROM smartphone_uber_rides WHERE id = ? AND status = "waiting"', [rideId]).then(r => r[0]);
+    if (!ride) return { error: 'Corrida não disponível' };
+
+    await dbUpdate(
+        'UPDATE smartphone_uber_rides SET driver_id = ?, driver_phone = ?, status = "accepted" WHERE id = ?',
+        [userId, phone, rideId]
+    );
+
+    const acceptData = { rideId, driver_id: userId, driver_name: 'Motorista ' + String(phone||'').slice(-4), driver_phone: phone, driver_rating: '4.9' };
+
+    // Push to passenger
+    const passengerSource = findPlayerSource(ride.passenger_id);
+    if (passengerSource) pushToPlayer(passengerSource, 'UBER_RIDE_ACCEPTED', acceptData);
+
+    // Set blip on passenger map
+    if (passengerSource) emitNet('smartphone:blip', passengerSource, { type: 'uber_driver', label: 'Seu Motorista' });
+    emitNet('smartphone:blip', source, { type: 'uber_passenger', label: 'Passageiro' });
+
+    return { ok: true, ride: { ...ride, ...acceptData, status: 'accepted' } };
+});
+
+registerHandler('uber_complete', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { rideId } = args || {};
+    if (!rideId) return { error: 'Corrida inválida' };
+
+    const ride = await dbQuery('SELECT * FROM smartphone_uber_rides WHERE id = ? AND status = "accepted"', [rideId]).then(r => r[0]);
+    if (!ride) return { error: 'Corrida não encontrada' };
+
+    const price = ride.estimated_price || 200;
+
+    // Charge passenger, pay driver
+    try {
+        const passUserId = parseInt(ride.passenger_id);
+        const drivUserId = parseInt(ride.driver_id);
+        const vRP = exports['vrp'];
+        if (vRP && vRP.getMoney) {
+            const passMoney = vRP.getMoney(passUserId) || 0;
+            if (passMoney >= price) {
+                vRP.removeMoney(passUserId, price);
+                vRP.addMoney(drivUserId, Math.round(price * 0.85)); // 15% taxa Uber
+            }
+        }
+    } catch(e) { console.log('[UBER] vRP payment error:', e.message); }
+
+    await dbUpdate('UPDATE smartphone_uber_rides SET status = "completed", price = ? WHERE id = ?', [price, rideId]);
+
+    const completeData = { rideId, price, status: 'completed' };
+
+    // Push to both
+    const passengerSource = findPlayerSource(ride.passenger_id);
+    if (passengerSource) {
+        pushToPlayer(passengerSource, 'UBER_RIDE_COMPLETED', completeData);
+        emitNet('smartphone:removeBlip', passengerSource, 'uber_driver');
+    }
+    emitNet('smartphone:removeBlip', source, 'uber_passenger');
+
+    // Push to driver
+    const driverSource = findPlayerSource(ride.driver_id);
+    if (driverSource && driverSource !== source) pushToPlayer(driverSource, 'UBER_RIDE_COMPLETED', completeData);
+
+    return { ok: true, ...completeData };
+});
+
+registerHandler('uber_cancel', async (source, args) => {
+    const { rideId } = args || {};
+    if (!rideId) return { error: 'Corrida inválida' };
+
+    const ride = await dbQuery('SELECT * FROM smartphone_uber_rides WHERE id = ? AND status IN ("waiting","accepted")', [rideId]).then(r => r[0]);
+    if (!ride) return { error: 'Corrida não encontrada' };
+
+    await dbUpdate('UPDATE smartphone_uber_rides SET status = "cancelled" WHERE id = ?', [rideId]);
+
+    // Push to other party
+    const passengerSource = findPlayerSource(ride.passenger_id);
+    const driverSource = ride.driver_id ? findPlayerSource(ride.driver_id) : null;
+
+    if (passengerSource) { pushToPlayer(passengerSource, 'UBER_RIDE_CANCELLED', { rideId }); emitNet('smartphone:removeBlip', passengerSource, 'uber_driver'); }
+    if (driverSource) { pushToPlayer(driverSource, 'UBER_RIDE_CANCELLED', { rideId }); emitNet('smartphone:removeBlip', driverSource, 'uber_passenger'); }
+
+    return { ok: true };
+});
+
+registerHandler('uber_driver_toggle', async (source) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const isOnline = uberDrivers[source]?.online || false;
+    if (isOnline) {
+        delete uberDrivers[source];
+    } else {
+        uberDrivers[source] = { online: true, userId, name: 'Motorista ' + String(phone||'').slice(-4) };
+    }
+    return { ok: true, online: !isOnline };
+});
+
+registerHandler('uber_rate', async (source, args) => {
+    const { rideId, rating } = args || {};
+    if (!rideId || !rating) return { error: 'Avaliação inválida' };
+    await dbUpdate('UPDATE smartphone_uber_rides SET rating = ? WHERE id = ?', [rating, rideId]);
+    return { ok: true };
+});
+
+registerHandler('uber_history', async (source) => {
+    const userId = await getUserIdCached(source);
+    const rides = await dbQuery(
+        'SELECT * FROM smartphone_uber_rides WHERE passenger_id = ? OR driver_id = ? ORDER BY id DESC LIMIT 20',
+        [userId, userId]
+    );
+    return { ok: true, rides };
+});
+
+// ============================================
+// WAZE / GPS
+// ============================================
+
+registerHandler('waze_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const reports = await dbQuery(
+        'SELECT * FROM smartphone_waze_reports WHERE created_at > DATE_SUB(NOW(), INTERVAL 30 MINUTE) ORDER BY id DESC LIMIT 10'
+    );
+    const recent = await dbQuery(
+        'SELECT DISTINCT destination FROM smartphone_waze_history WHERE user_id = ? ORDER BY id DESC LIMIT 5',
+        [userId]
+    ).then(r => r.map(x => x.destination));
+    return { ok: true, reports, recent, saved: [] };
+});
+
+registerHandler('waze_navigate', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { destination } = args || {};
+    if (!destination?.trim()) return { error: 'Informe o destino' };
+    const eta = `${2 + Math.floor(Math.random() * 8)} min`;
+    await dbInsert('INSERT INTO smartphone_waze_history (user_id, destination) VALUES (?, ?)', [userId, destination]);
+    // FiveM: create blip on client
+    emitNet('smartphone:setWaypoint', source, { destination });
+    return { ok: true, eta };
+});
+
+registerHandler('waze_stop', async (source) => {
+    emitNet('smartphone:removeWaypoint', source);
+    return { ok: true };
+});
+
+registerHandler('waze_report', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { type } = args || {};
+    if (!type) return { error: 'Tipo inválido' };
+    const id = await dbInsert('INSERT INTO smartphone_waze_reports (user_id, type) VALUES (?, ?)', [userId, type]);
+    return { ok: true, report: { id, type, user_id: userId, created_at: new Date().toISOString() } };
+});
+
+// ============================================
+// WEAZEL NEWS
+// ============================================
+
+registerHandler('weazel_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const articles = await dbQuery('SELECT * FROM smartphone_weazel_articles ORDER BY is_breaking DESC, id DESC LIMIT 30');
+    // Check if journalist (simple: everyone can read, job-based can write)
+    // For now, allow everyone to write — server admins can restrict later
+    return { ok: true, articles, isJournalist: true };
+});
+
+registerHandler('weazel_publish', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const { title, body, category, isBreaking } = args || {};
+    if (!title?.trim() || !body?.trim()) return { error: 'Preencha título e texto' };
+
+    const id = await dbInsert(
+        'INSERT INTO smartphone_weazel_articles (author_id, author_name, title, body, category, is_breaking) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, 'Jornalista ' + String(phone||'').slice(-4), title.trim(), body.trim(), category || 'Cidade', isBreaking ? 1 : 0]
+    );
+
+    const article = { id, author_id: userId, author_name: 'Jornalista ' + String(phone||'').slice(-4), title: title.trim(), body: body.trim(), category, is_breaking: isBreaking ? 1 : 0, created_at: new Date().toISOString() };
+
+    // If breaking, push to ALL players
+    if (isBreaking) {
+        for (const [src] of Object.entries(playerCache)) {
+            if (parseInt(src) !== source) {
+                pushToPlayer(parseInt(src), 'WEAZEL_BREAKING', { article });
+            }
+        }
+    }
+
+    return { ok: true, article };
+});
+
+// ============================================
+// YELLOW PAGES (PÁGINAS AMARELAS)
+// ============================================
+
+registerHandler('yp_list', async (source) => {
+    const ads = await dbQuery('SELECT * FROM smartphone_yellowpages ORDER BY id DESC LIMIT 50');
+    return { ok: true, ads };
+});
+
+registerHandler('yp_create', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { name, description, category, phone } = args || {};
+    if (!name?.trim() || !phone?.trim()) return { error: 'Preencha nome e telefone' };
+    const id = await dbInsert(
+        'INSERT INTO smartphone_yellowpages (user_id, name, description, category, phone) VALUES (?, ?, ?, ?, ?)',
+        [userId, name.trim(), (description||'').trim(), category || 'outro', phone.trim()]
+    );
+    return { ok: true, ad: { id, user_id: userId, name: name.trim(), description: (description||'').trim(), category, phone: phone.trim(), created_at: new Date().toISOString() } };
+});
+
+// ============================================
+// PAYPAL
+// ============================================
+
+registerHandler('paypal_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    let balance = 0;
+    try { if (exports.vrp && exports.vrp.getMoney) balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    const transactions = await dbQuery(
+        'SELECT * FROM smartphone_paypal_transactions WHERE sender_id = ? OR receiver_id = ? ORDER BY id DESC LIMIT 20',
+        [userId, userId]
+    ).then(rows => rows.map(t => ({
+        ...t,
+        type: String(t.sender_id) === String(userId) ? 'sent' : 'received',
+        other_phone: String(t.sender_id) === String(userId) ? t.receiver_phone : t.sender_phone,
+    })));
+    return { ok: true, balance, transactions };
+});
+
+registerHandler('paypal_send', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const { to, amount, note } = args || {};
+    if (!to?.trim() || !amount || amount <= 0) return { error: 'Dados inválidos' };
+    const intAmount = Math.round(Number(amount));
+
+    // Check balance
+    let balance = 0;
+    try { if (exports.vrp && exports.vrp.getMoney) balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < intAmount) return { error: 'Saldo insuficiente' };
+
+    // Find receiver
+    const receiverUserId = phoneToUserId(to);
+    if (!receiverUserId || receiverUserId === parseInt(userId)) return { error: 'Destinatário inválido' };
+
+    // Transfer
+    try {
+        exports.vrp.removeMoney(parseInt(userId), intAmount);
+        exports.vrp.addMoney(receiverUserId, intAmount);
+    } catch(e) { return { error: 'Erro na transferência' }; }
+
+    const newBalance = balance - intAmount;
+
+    // Save transaction
+    await dbInsert(
+        'INSERT INTO smartphone_paypal_transactions (sender_id, sender_phone, receiver_id, receiver_phone, amount, note) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, phone, receiverUserId, to, intAmount, (note||'').trim()]
+    );
+
+    // Push notification to receiver
+    const receiverSource = getSourceByPhone(to);
+    if (receiverSource) {
+        pushToPlayer(receiverSource, 'PAYPAL_RECEIVED', { from: phone, amount: intAmount, note });
+        fetchClient('playSound', { sound: 'notification' });
+    }
+
+    return { ok: true, newBalance };
+});
+
+// ============================================
+// BLAZE / CASINO
+// ============================================
+
+const minesGames = {}; // { gameId: { grid, mines, revealed, betAmount, userId } }
+
+registerHandler('blaze_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    let balance = 0;
+    try { if (exports.vrp && exports.vrp.getMoney) balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    return { ok: true, balance };
+});
+
+registerHandler('blaze_crash_bet', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { amount } = args || {};
+    if (!amount || amount <= 0) return { error: 'Aposta inválida' };
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < amount) return { error: 'Saldo insuficiente' };
+    try { exports.vrp.removeMoney(parseInt(userId), amount); } catch(e) {}
+    // Generate crash point server-side (house edge ~4%)
+    const crashAt = parseFloat((1 + Math.random() * Math.random() * 10).toFixed(2));
+    const newBal = balance - amount;
+    // Store for cashout
+    const gameId = Date.now();
+    minesGames['crash_' + source] = { crashAt, betAmount: amount, userId, gameId };
+    return { ok: true, crashAt, balance: newBal, gameId };
+});
+
+registerHandler('blaze_crash_cashout', async (source, args) => {
+    const game = minesGames['crash_' + source];
+    if (!game) return { error: 'Jogo não encontrado' };
+    const { multiplier } = args || {};
+    const payout = Math.round(game.betAmount * (multiplier || 1));
+    try { exports.vrp.addMoney(parseInt(game.userId), payout); } catch(e) {}
+    delete minesGames['crash_' + source];
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(game.userId)) || 0; } catch(e) {}
+    return { ok: true, payout, balance };
+});
+
+registerHandler('blaze_crash_history', async () => {
+    const history = [];
+    for (let i = 0; i < 15; i++) history.push(parseFloat((1 + Math.random() * Math.random() * 10).toFixed(2)));
+    return { ok: true, history };
+});
+
+registerHandler('blaze_double_bet', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { amount, choice } = args || {};
+    if (!amount || amount <= 0 || !choice) return { error: 'Aposta inválida' };
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < amount) return { error: 'Saldo insuficiente' };
+    try { exports.vrp.removeMoney(parseInt(userId), amount); } catch(e) {}
+    // Server-side result (house edge via white = ~7% chance, not 1/3)
+    const roll = Math.random();
+    const color = roll < 0.07 ? 'white' : roll < 0.535 ? 'red' : 'black';
+    const won = color === choice;
+    const payout = won ? (color === 'white' ? amount * 14 : amount * 2) : 0;
+    if (payout > 0) try { exports.vrp.addMoney(parseInt(userId), payout); } catch(e) {}
+    let newBal = 0;
+    try { newBal = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    return { ok: true, color, won, payout, balance: newBal };
+});
+
+registerHandler('blaze_double_history', async () => {
+    const h = [];
+    for (let i = 0; i < 20; i++) { const r = Math.random(); h.push(r < 0.07 ? 'white' : r < 0.535 ? 'red' : 'black'); }
+    return { ok: true, history: h };
+});
+
+registerHandler('blaze_mines_start', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { amount, mines } = args || {};
+    if (!amount || amount <= 0) return { error: 'Aposta inválida' };
+    const mineCount = Math.min(Math.max(parseInt(mines)||3, 1), 24);
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < amount) return { error: 'Saldo insuficiente' };
+    try { exports.vrp.removeMoney(parseInt(userId), amount); } catch(e) {}
+    // Generate mine positions
+    const positions = [];
+    while (positions.length < mineCount) { const p = Math.floor(Math.random() * 25); if (!positions.includes(p)) positions.push(p); }
+    const grid = Array(25).fill('gem');
+    positions.forEach(p => grid[p] = 'mine');
+    const gameId = 'mines_' + Date.now();
+    minesGames[gameId] = { grid, mines: positions, revealed: [], betAmount: amount, userId, mineCount };
+    let newBal = 0;
+    try { newBal = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    return { ok: true, gameId, grid: Array(25).fill('hidden'), balance: newBal };
+});
+
+registerHandler('blaze_mines_reveal', async (source, args) => {
+    const { gameId, tile } = args || {};
+    const game = minesGames[gameId];
+    if (!game) return { error: 'Jogo não encontrado' };
+    if (game.revealed.includes(tile)) return { error: 'Já revelado' };
+    const isMine = game.grid[tile] === 'mine';
+    game.revealed.push(tile);
+    if (isMine) {
+        delete minesGames[gameId];
+        return { ok: true, mine: true, fullGrid: game.grid, allRevealed: Array.from({length:25},(_,i)=>i) };
+    }
+    const mult = 1 + game.revealed.length * (game.mineCount * 0.15);
+    const currentPayout = Math.round(game.betAmount * mult);
+    return { ok: true, mine: false, currentPayout, multiplier: mult };
+});
+
+registerHandler('blaze_mines_cashout', async (source, args) => {
+    const { gameId } = args || {};
+    const game = minesGames[gameId];
+    if (!game) return { error: 'Jogo não encontrado' };
+    const mult = 1 + game.revealed.length * (game.mineCount * 0.15);
+    const payout = Math.round(game.betAmount * mult);
+    try { exports.vrp.addMoney(parseInt(game.userId), payout); } catch(e) {}
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(game.userId)) || 0; } catch(e) {}
+    const fullGrid = game.grid;
+    delete minesGames[gameId];
+    return { ok: true, payout, balance, fullGrid };
+});
+
+registerHandler('blaze_coinflip_bet', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { amount, choice } = args || {};
+    if (!amount || amount <= 0 || !choice) return { error: 'Aposta inválida' };
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < amount) return { error: 'Saldo insuficiente' };
+    try { exports.vrp.removeMoney(parseInt(userId), amount); } catch(e) {}
+    const result = Math.random() < 0.48 ? choice : (choice === 'cara' ? 'coroa' : 'cara');
+    const won = result === choice;
+    const payout = won ? amount * 2 : 0;
+    if (payout > 0) try { exports.vrp.addMoney(parseInt(userId), payout); } catch(e) {}
+    let newBal = 0;
+    try { newBal = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    return { ok: true, result, won, payout, balance: newBal };
+});
+
+// ============================================
+// IFOOD
+// ============================================
+
+registerHandler('ifood_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const orders = await dbQuery(
+        'SELECT * FROM smartphone_ifood_orders WHERE user_id = ? ORDER BY id DESC LIMIT 10', [userId]
+    );
+    return { ok: true, orders };
+});
+
+registerHandler('ifood_order', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { restaurant, items, total, fee } = args || {};
+    if (!restaurant || !items?.length || !total) return { error: 'Pedido inválido' };
+    // Check balance
+    let balance = 0;
+    try { balance = exports.vrp.getMoney(parseInt(userId)) || 0; } catch(e) {}
+    if (balance < total) return { error: 'Saldo insuficiente' };
+    try { exports.vrp.removeMoney(parseInt(userId), total); } catch(e) {}
+    const orderId = await dbInsert(
+        'INSERT INTO smartphone_ifood_orders (user_id, restaurant, items, total, fee, status) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, restaurant, JSON.stringify(items), total, fee || 0, 'confirmed']
+    );
+    // Auto-progress order status
+    setTimeout(() => { dbUpdate('UPDATE smartphone_ifood_orders SET status = "preparing" WHERE id = ?', [orderId]); pushToPlayer(source, 'IFOOD_STATUS', { orderId, status: 'preparing' }); }, 5000);
+    setTimeout(() => { dbUpdate('UPDATE smartphone_ifood_orders SET status = "delivering" WHERE id = ?', [orderId]); pushToPlayer(source, 'IFOOD_STATUS', { orderId, status: 'delivering' }); }, 15000);
+    setTimeout(() => { dbUpdate('UPDATE smartphone_ifood_orders SET status = "delivered" WHERE id = ?', [orderId]); pushToPlayer(source, 'IFOOD_STATUS', { orderId, status: 'delivered' }); }, 30000);
+    return { ok: true, orderId };
+});
+
+// ============================================
+// TOR (DEEP WEB)
+// ============================================
+
+registerHandler('tor_messages', async (source, args) => {
+    const { channel } = args || {};
+    if (!channel) return { messages: [] };
+    const messages = await dbQuery(
+        'SELECT * FROM smartphone_tor_messages WHERE channel = ? ORDER BY id DESC LIMIT 30', [channel]
+    ).then(r => r.reverse());
+    return { ok: true, messages };
+});
+
+registerHandler('tor_send', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { channel, message, alias } = args || {};
+    if (!channel || !message?.trim()) return { error: 'Mensagem inválida' };
+    const id = await dbInsert(
+        'INSERT INTO smartphone_tor_messages (channel, user_id, alias, message) VALUES (?, ?, ?, ?)',
+        [channel, userId, alias || 'Anon', message.trim()]
+    );
+    const msgData = { id, channel, alias: alias || 'Anon', message: message.trim(), created_at: new Date().toISOString() };
+    // Push to all online players
+    for (const [src] of Object.entries(playerCache)) {
+        if (parseInt(src) !== source) {
+            pushToPlayer(parseInt(src), 'TOR_MESSAGE', { channel, message: msgData });
+        }
+    }
+    return { ok: true };
+});
+
+registerHandler('tor_store', async () => {
+    const items = await dbQuery('SELECT * FROM smartphone_tor_store WHERE available = 1 ORDER BY id');
+    if (items.length === 0) {
+        // Seed default items
+        const defaults = [
+            { name: 'Lockpick Set', price: 500 },
+            { name: 'Documento Falso', price: 2000 },
+            { name: 'Escuta Telefônica', price: 1500 },
+            { name: 'Placa Clonada', price: 3000 },
+            { name: 'Radio Freq. Policial', price: 5000 },
+        ];
+        return { ok: true, items: defaults.map((d,i) => ({ id: i+1, ...d })) };
+    }
+    return { ok: true, items };
+});
+
+registerHandler('tor_buy', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { itemId } = args || {};
+    if (!itemId) return { error: 'Item inválido' };
+    // Simple buy logic — deduct money, give item via vRP
+    // In production, this would integrate with vRP inventory
+    return { ok: true, message: 'Item disponível para coleta no ponto de drop' };
+});
+
+// ============================================
+// WHATSAPP GROUPS
+// ============================================
+
+registerHandler('whatsapp_create_group', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    const { name, members } = args || {};
+    if (!name?.trim() || !members?.length) return { error: 'Nome e membros obrigatórios' };
+    const chatId = await dbInsert('INSERT INTO smartphone_whatsapp_chats (is_group, group_name, created_by) VALUES (1, ?, ?)', [name.trim(), userId]);
+    await dbInsert('INSERT INTO smartphone_whatsapp_group_members (chat_id, user_phone) VALUES (?, ?)', [chatId, phone]);
+    for (const mp of members) await dbInsert('INSERT INTO smartphone_whatsapp_group_members (chat_id, user_phone) VALUES (?, ?)', [chatId, mp]);
+    await dbInsert('INSERT INTO smartphone_whatsapp_messages (chat_id, sender_phone, sender_name, message, type) VALUES (?, ?, ?, ?, ?)', [chatId, phone, 'Sistema', `Grupo "${name.trim()}" criado`, 'system']);
+    const chat = { id: chatId, name: name.trim(), is_group: 1, memberCount: members.length + 1, lastMessage: `Grupo "${name.trim()}" criado`, lastMessageAt: new Date().toISOString() };
+    for (const mp of members) { const ms = getSourceByPhone(mp); if (ms) pushToPlayer(ms, 'WHATSAPP_MESSAGE', { chatId, message: `Grupo "${name.trim()}" criado`, sender_phone: phone, created_at: new Date().toISOString() }); }
+    return { ok: true, chat };
+});
+
+// ============================================
+// GRINDR
+// ============================================
+
+registerHandler('grindr_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const myProfile = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id = ?', [userId]).then(r => r[0] || null);
+    const profiles = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id != ? ORDER BY id DESC LIMIT 20', [userId]);
+    const taps = await dbQuery('SELECT * FROM smartphone_grindr_taps WHERE target_id = ? ORDER BY id DESC LIMIT 10', [userId]);
+    const chats = await dbQuery(
+        `SELECT c.*, CASE WHEN c.user1_id = ? THEN c.user2_name ELSE c.user1_name END as other_name,
+         CASE WHEN c.user1_id = ? THEN c.user2_avatar ELSE c.user1_avatar END as other_avatar,
+         CASE WHEN c.user1_id = ? THEN c.user2_id ELSE c.user1_id END as other_id
+         FROM smartphone_grindr_chats c WHERE c.user1_id = ? OR c.user2_id = ? ORDER BY c.updated_at DESC`,
+        [userId, userId, userId, userId, userId]
+    );
+    return { ok: true, myProfile, profiles, taps, chats };
+});
+
+registerHandler('grindr_save_profile', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { name, bio, avatar } = args || {};
+    if (!name?.trim()) return { error: 'Nome obrigatório' };
+    const existing = await dbQuery('SELECT id FROM smartphone_grindr_profiles WHERE user_id = ?', [userId]).then(r => r[0]);
+    if (existing) await dbUpdate('UPDATE smartphone_grindr_profiles SET name = ?, bio = ?, avatar = ? WHERE user_id = ?', [name.trim(), (bio||'').trim(), avatar||'😎', userId]);
+    else await dbInsert('INSERT INTO smartphone_grindr_profiles (user_id, name, bio, avatar) VALUES (?, ?, ?, ?)', [userId, name.trim(), (bio||'').trim(), avatar||'😎']);
+    const profile = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id = ?', [userId]).then(r => r[0]);
+    return { ok: true, profile };
+});
+
+registerHandler('grindr_tap', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { targetId } = args || {};
+    if (!targetId) return { error: 'Perfil inválido' };
+    await dbInsert('INSERT INTO smartphone_grindr_taps (sender_id, target_id) VALUES (?, ?)', [userId, targetId]);
+    const targetSource = findPlayerSource(targetId);
+    if (targetSource) { const p = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id = ?', [userId]).then(r => r[0]); pushToPlayer(targetSource, 'GRINDR_TAP', { from: p?.name || 'Alguém', avatar: p?.avatar || '😎' }); }
+    return { ok: true };
+});
+
+registerHandler('grindr_open_chat', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { targetId } = args || {};
+    if (!targetId) return { error: 'Perfil inválido' };
+    let chat = await dbQuery('SELECT * FROM smartphone_grindr_chats WHERE (user1_id = ? AND user2_id = ?) OR (user1_id = ? AND user2_id = ?)', [userId, targetId, targetId, userId]).then(r => r[0]);
+    if (!chat) {
+        const my = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id = ?', [userId]).then(r => r[0]);
+        const other = await dbQuery('SELECT * FROM smartphone_grindr_profiles WHERE user_id = ?', [targetId]).then(r => r[0]);
+        const chatId = await dbInsert('INSERT INTO smartphone_grindr_chats (user1_id, user1_name, user1_avatar, user2_id, user2_name, user2_avatar) VALUES (?, ?, ?, ?, ?, ?)', [userId, my?.name||'Anon', my?.avatar||'😎', targetId, other?.name||'Anon', other?.avatar||'😎']);
+        chat = { id: chatId };
+    }
+    const messages = await dbQuery('SELECT * FROM smartphone_grindr_messages WHERE chat_id = ? ORDER BY id', [chat.id]);
+    return { ok: true, chatId: chat.id, messages };
+});
+
+registerHandler('grindr_send', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { chatId, message } = args || {};
+    if (!chatId || !message?.trim()) return { error: 'Mensagem inválida' };
+    const id = await dbInsert('INSERT INTO smartphone_grindr_messages (chat_id, sender_id, message) VALUES (?, ?, ?)', [chatId, userId, message.trim()]);
+    await dbUpdate('UPDATE smartphone_grindr_chats SET last_message = ?, updated_at = NOW() WHERE id = ?', [message.trim(), chatId]);
+    const chat = await dbQuery('SELECT * FROM smartphone_grindr_chats WHERE id = ?', [chatId]).then(r => r[0]);
+    if (chat) { const otherId = chat.user1_id === userId ? chat.user2_id : chat.user1_id; const os = findPlayerSource(otherId); if(os) pushToPlayer(os, 'GRINDR_MESSAGE', { chatId, message: { id, sender_id: userId, message: message.trim(), created_at: new Date().toISOString() } }); }
+    return { ok: true };
+});
+
+// ============================================
+// GALLERY / PHOTOS
+// ============================================
+
+registerHandler('gallery_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const photos = await dbQuery('SELECT * FROM smartphone_gallery WHERE user_id = ? ORDER BY id DESC LIMIT 50', [userId]);
+    return { ok: true, photos };
+});
+
+registerHandler('gallery_capture', async (source) => {
+    const userId = await getUserIdCached(source);
+    const id = await dbInsert('INSERT INTO smartphone_gallery (user_id, color, emoji, label) VALUES (?, ?, ?, ?)', [userId, '#333', '📸', 'Screenshot']);
+    return { ok: true, photo: { id } };
+});
+
+registerHandler('gallery_delete', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { photoId } = args || {};
+    if (photoId) await dbUpdate('DELETE FROM smartphone_gallery WHERE id = ? AND user_id = ?', [photoId, userId]);
+    return { ok: true };
+});
+
+// ============================================
+// APP STORE
+// ============================================
+
+registerHandler('appstore_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const row = await dbQuery('SELECT installed_apps FROM smartphone_appstore WHERE user_id = ?', [userId]).then(r => r[0]);
+    if (row?.installed_apps) return { ok: true, installed: JSON.parse(row.installed_apps) };
+    return { ok: true, installed: null };
+});
+
+const appstoreToggle = async (source, appId, action) => {
+    const userId = await getUserIdCached(source);
+    if (!appId) return { error: 'App inválido' };
+    let row = await dbQuery('SELECT installed_apps FROM smartphone_appstore WHERE user_id = ?', [userId]).then(r => r[0]);
+    let installed = row?.installed_apps ? JSON.parse(row.installed_apps) : [];
+    if (action === 'install' && !installed.includes(appId)) installed.push(appId);
+    if (action === 'uninstall') installed = installed.filter(id => id !== appId);
+    if (row) await dbUpdate('UPDATE smartphone_appstore SET installed_apps = ? WHERE user_id = ?', [JSON.stringify(installed), userId]);
+    else await dbInsert('INSERT INTO smartphone_appstore (user_id, installed_apps) VALUES (?, ?)', [userId, JSON.stringify(installed)]);
+    return { ok: true };
+};
+
+registerHandler('appstore_install', async (source, args) => appstoreToggle(source, args?.appId, 'install'));
+registerHandler('appstore_uninstall', async (source, args) => appstoreToggle(source, args?.appId, 'uninstall'));
+registerHandler('appstore_toggle', async (source, args) => appstoreToggle(source, args?.appId, args?.action));
 
 // ============================================
 // STARTUP

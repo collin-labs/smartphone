@@ -16,6 +16,22 @@ import Twitter from "../apps/Twitter";
 import TikTok from "../apps/TikTok";
 import Tinder from "../apps/Tinder";
 import Marketplace from "../apps/Marketplace";
+import Uber from "../apps/Uber";
+import Waze from "../apps/Waze";
+import WeazelNews from "../apps/WeazelNews";
+import YellowPages from "../apps/YellowPages";
+import PayPal from "../apps/PayPal";
+import Blaze from "../apps/Blaze";
+import IFood from "../apps/IFood";
+import Spotify from "../apps/Spotify";
+import Tor from "../apps/Tor";
+import Minesweeper from "../apps/Minesweeper";
+import Grindr from "../apps/Grindr";
+import Gallery from "../apps/Gallery";
+import AppStore from "../apps/AppStore";
+import FleecaBank from "../apps/FleecaBank";
+import ControlCenter from "./ControlCenter";
+import LockScreen from "./LockScreen";
 import { usePusherEvent } from "../hooks/usePusher";
 import { setIncomingCall } from "../store/callState";
 import usePhone from "../store/usePhone";
@@ -35,12 +51,17 @@ export default function PhoneShell() {
   const [transitioning, setTransitioning] = useState(null); // "in" | "out" | null
   const [notification, setNotification] = useState(null);
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
+  const [locked, setLocked] = useState(true);
+  const [showCC, setShowCC] = useState(false);
+  const [pin, setPin] = useState(null); // null=no pin, '1234'=has pin
 
   // Show demo notification in dev mode only
   useEffect(() => {
     if (!isOpen) return;
     setCurrentApp(null);
     setTransitioning(null);
+    setShowCC(false);
+    setLocked(true); // Always lock on open
 
     // Only in browser dev mode - in FiveM, real notifications come via pusher
     const isInGame = typeof GetParentResourceName === 'function' || window.invokeNative !== undefined;
@@ -67,6 +88,7 @@ export default function PhoneShell() {
       const res = await fetchBackend('download');
       if (res?.settings) {
         setSettings(prev => ({ ...prev, ...res.settings }));
+        if (res.settings.pin) setPin(res.settings.pin);
       }
     })();
   }, [isOpen]);
@@ -178,6 +200,73 @@ export default function PhoneShell() {
     }
   }, [currentApp]));
 
+  usePusherEvent('UBER_RIDE_REQUEST', useCallback((data) => {
+    if (currentApp?.component !== 'uber') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `uber-req-${data.id}`, appId: 'uber', appName: 'Uber', icon: './apps/uber.webp', color: '#276EF1',
+        title: 'Nova corrida! 🚗', message: `${data.passenger_name} → ${data.destination}` });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('UBER_RIDE_ACCEPTED', useCallback((data) => {
+    if (currentApp?.component !== 'uber') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `uber-acc-${data.rideId}`, appId: 'uber', appName: 'Uber', icon: './apps/uber.webp', color: '#06C167',
+        title: 'Motorista a caminho! 🚗', message: `${data.driver_name} aceitou sua corrida` });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('UBER_RIDE_COMPLETED', useCallback((data) => {
+    if (currentApp?.component !== 'uber') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `uber-done-${data.rideId}`, appId: 'uber', appName: 'Uber', icon: './apps/uber.webp', color: '#06C167',
+        title: 'Corrida finalizada! ✅', message: `Valor: R$ ${Number(data.price||0).toFixed(2)}` });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('UBER_RIDE_CANCELLED', useCallback((data) => {
+    if (currentApp?.component !== 'uber') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `uber-cancel-${data.rideId}`, appId: 'uber', appName: 'Uber', icon: './apps/uber.webp', color: '#FF453A',
+        title: 'Corrida cancelada', message: 'A corrida foi cancelada' });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('WEAZEL_BREAKING', useCallback((data) => {
+    if (currentApp?.component !== 'weazel') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `weazel-${Date.now()}`, appId: 'weazel', appName: 'Weazel News', icon: './apps/weazel.webp', color: '#FF0000',
+        title: '🔴 URGENTE', message: data.article?.title || 'Nova notícia urgente' });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('PAYPAL_RECEIVED', useCallback((data) => {
+    if (currentApp?.component !== 'paypal') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `paypal-${Date.now()}`, appId: 'paypal', appName: 'PayPal', icon: './apps/paypal.webp', color: '#0070BA',
+        title: 'Você recebeu dinheiro! 💰', message: `R$ ${Number(data.amount||0).toFixed(2)} de ${data.from}` });
+    }
+  }, [currentApp]));
+
+  usePusherEvent('IFOOD_STATUS', useCallback((data) => {
+    if (currentApp?.component !== 'ifood') {
+      const msgs = { preparing: '👨‍🍳 Pedido sendo preparado', delivering: '🛵 Saiu para entrega!', delivered: '🎉 Pedido entregue!' };
+      if (msgs[data.status]) {
+        fetchClient('playSound', { sound: 'notification' });
+        setNotification({ id: `ifood-${Date.now()}`, appId: 'ifood', appName: 'iFood', icon: './apps/ifood.webp', color: '#EA1D2C',
+          title: 'iFood', message: msgs[data.status] });
+      }
+    }
+  }, [currentApp]));
+
+  usePusherEvent('TOR_MESSAGE', useCallback((data) => {
+    if (currentApp?.component !== 'tor') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({ id: `tor-${Date.now()}`, appId: 'tor', appName: 'Tor', icon: './apps/tor.jpg', color: '#7D4698',
+        title: `🧅 ${data.channel}`, message: `${data.message?.alias}: ${data.message?.message?.slice(0,40)}` });
+    }
+  }, [currentApp]));
+
   const handleOpenApp = useCallback((app) => {
     setCurrentApp(app);
     setTransitioning("in");
@@ -244,6 +333,34 @@ export default function PhoneShell() {
         return <Tinder onNavigate={handleNavigate} />;
       case "marketplace":
         return <Marketplace onNavigate={handleNavigate} />;
+      case "uber":
+        return <Uber onNavigate={handleNavigate} />;
+      case "waze":
+        return <Waze onNavigate={handleNavigate} />;
+      case "weazel":
+        return <WeazelNews onNavigate={handleNavigate} />;
+      case "yellowpages":
+        return <YellowPages onNavigate={handleNavigate} />;
+      case "paypal":
+        return <PayPal onNavigate={handleNavigate} />;
+      case "casino":
+        return <Blaze onNavigate={handleNavigate} />;
+      case "ifood":
+        return <IFood onNavigate={handleNavigate} />;
+      case "spotify":
+        return <Spotify />;
+      case "tor":
+        return <Tor onNavigate={handleNavigate} />;
+      case "minesweeper":
+        return <Minesweeper />;
+      case "gallery":
+        return <Gallery onNavigate={handleNavigate} />;
+      case "appstore":
+        return <AppStore onNavigate={handleNavigate} />;
+      case "fleeca":
+        return <FleecaBank onNavigate={handleNavigate} />;
+      case "grindr":
+        return <Grindr onNavigate={handleNavigate} />;
       default:
         // Placeholder for unimplemented apps
         return (
@@ -289,6 +406,55 @@ export default function PhoneShell() {
           animation: "phoneOpen 350ms cubic-bezier(0.16, 1, 0.3, 1) both",
         }}
       >
+        {/* Dynamic Island */}
+        <div style={{
+          position:'absolute', top:8, left:'50%', transform:'translateX(-50%)',
+          width:120, height:34, borderRadius:17, background:'#000',
+          zIndex:200, display:'flex', alignItems:'center', justifyContent:'center',
+          boxShadow:'0 1px 4px rgba(0,0,0,0.3)',
+        }}>
+          {notification ? (
+            <div style={{
+              display:'flex', alignItems:'center', gap:6, padding:'0 10px',
+              animation:'diExpand 300ms ease-out',
+            }}>
+              {notification.icon && <img src={notification.icon} style={{ width:18, height:18, borderRadius:4 }} />}
+              <span style={{ color:'#fff', fontSize:10, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:70 }}>
+                {notification.title}
+              </span>
+            </div>
+          ) : (
+            <div style={{ width:8, height:8, borderRadius:4, background:'#1C1C1E' }} />
+          )}
+        </div>
+
+        {/* Lock Screen */}
+        {locked && (
+          <LockScreen
+            wallpaperIdx={settings.wallpaper}
+            hasPin={pin}
+            onUnlock={() => setLocked(false)}
+            notifications={notification ? [notification] : []}
+          />
+        )}
+
+        {/* Control Center */}
+        {showCC && (
+          <ControlCenter
+            settings={settings}
+            onSettingsChange={setSettings}
+            onClose={() => setShowCC(false)}
+          />
+        )}
+
+        {/* Control Center trigger - top right area */}
+        {!locked && (
+          <button onClick={() => setShowCC(!showCC)} style={{
+            position:'absolute', top:0, right:0, width:100, height:50,
+            zIndex:150, background:'transparent', border:'none', cursor:'pointer',
+          }} title="Control Center" />
+        )}
+
         {/* Notification */}
         <NotificationBanner
           notification={notification}

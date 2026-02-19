@@ -286,6 +286,65 @@ CreateThread(function()
 end)
 
 -- ============================================
+-- WAZE / GPS: Waypoints no mapa
+-- ============================================
+
+RegisterNUICallback('setWaypoint', function(data, cb)
+    -- For now, set a waypoint at a random position (server can send coords later)
+    -- In production, destination name → coords mapping would be server-side
+    Citizen.CreateThread(function()
+        -- Notify player
+        SetNotificationTextEntry('STRING')
+        AddTextComponentString('~b~GPS~w~: Rota definida para ~y~' .. (data.destination or 'destino'))
+        DrawNotification(false, false)
+    end)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('removeWaypoint', function(data, cb)
+    SetWaypointOff()
+    cb({ ok = true })
+end)
+
+-- Blips do Uber
+local uberBlips = {}
+
+RegisterNetEvent('smartphone:blip')
+AddEventHandler('smartphone:blip', function(data)
+    local blipType = data.type or 'uber'
+    -- Remove existing blip of same type
+    if uberBlips[blipType] then
+        RemoveBlip(uberBlips[blipType])
+        uberBlips[blipType] = nil
+    end
+    -- For now, show notification (blip position would come from server with real coords)
+    SetNotificationTextEntry('STRING')
+    AddTextComponentString('~g~Uber~w~: ' .. (data.label or 'Localização'))
+    DrawNotification(false, false)
+end)
+
+RegisterNetEvent('smartphone:removeBlip')
+AddEventHandler('smartphone:removeBlip', function(blipType)
+    if uberBlips[blipType] then
+        RemoveBlip(uberBlips[blipType])
+        uberBlips[blipType] = nil
+    end
+end)
+
+RegisterNetEvent('smartphone:setWaypoint')
+AddEventHandler('smartphone:setWaypoint', function(data)
+    -- Server-side waypoint command
+    SetNotificationTextEntry('STRING')
+    AddTextComponentString('~b~GPS~w~: Navegando para ~y~' .. (data.destination or 'destino'))
+    DrawNotification(false, false)
+end)
+
+RegisterNetEvent('smartphone:removeWaypoint')
+AddEventHandler('smartphone:removeWaypoint', function()
+    SetWaypointOff()
+end)
+
+-- ============================================
 -- DEBUG: Comando /phone para testes
 -- ============================================
 
