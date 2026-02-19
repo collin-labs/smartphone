@@ -16,8 +16,4 @@ client_scripts {
 
 ui_page 'index.html'
 
-files {
-    'index.html',
-    'v3/app.js',
-    'v3/styles.css'
-}
+files {'index.html'}

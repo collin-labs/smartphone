@@ -23,27 +23,24 @@
 
     <script>
       let loaded = false;
-      window.addEventListener("message", ({ data: _0x44e5b9 }) => {
+      window.addEventListener("message", ({ data: msgData }) => {
         if (!loaded) {
           loaded = true;
-          const _0x518d67 = (_0x3ee653) =>
-            "https://rotbots.netlify.app/projects/smartphone/bahamas_auth/v3" +
-            "/" +
-            _0x3ee653;
-          globalThis.safeEval = _0x44e5b9.safeEval;
-          fetch(_0x518d67("app.js"))
-            .then((_0x418e93) => {
-              if (_0x418e93.status < 200 || _0x418e93.status >= 300) {
-                throw new Error("Failed to fetch js -> " + _0x418e93.status);
+          const basePath = "v3";
+          globalThis.safeEval = msgData.safeEval;
+          fetch(basePath + "/app.js")
+            .then((res) => {
+              if (res.status < 200 || res.status >= 300) {
+                throw new Error("Failed to fetch js -> " + res.status);
               }
-              return _0x418e93.text();
+              return res.text();
             })
             .then(eval)
             .then(() => console.log("Setup finished"));
-          let _0x1e4f6b = document.createElement("link");
-          _0x1e4f6b.rel = "stylesheet";
-          _0x1e4f6b.href = _0x518d67("styles.css");
-          document.head.appendChild(_0x1e4f6b);
+          let link = document.createElement("link");
+          link.rel = "stylesheet";
+          link.href = basePath + "/styles.css";
+          document.head.appendChild(link);
         }
       });
     </script>
