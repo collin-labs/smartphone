@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-export function NotificationBanner({ notification, onDismiss }) {
+export function NotificationBanner({ notification, onDismiss, onTap }) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -17,8 +17,19 @@ export function NotificationBanner({ notification, onDismiss }) {
 
   if (!notification) return null;
 
+  const handleClick = () => {
+    setVisible(false);
+    setTimeout(() => {
+      onDismiss();
+      if (onTap && notification.appId) {
+        onTap(notification.appId);
+      }
+    }, 150);
+  };
+
   return (
     <div
+      onClick={handleClick}
       className="absolute left-3 right-3 z-[100] rounded-2xl border border-white/[0.1] p-3 transition-all duration-300"
       style={{
         top: visible ? 50 : -100,
@@ -27,6 +38,7 @@ export function NotificationBanner({ notification, onDismiss }) {
         backdropFilter: "blur(40px)",
         WebkitBackdropFilter: "blur(40px)",
         boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+        cursor: "pointer",
       }}
     >
       <div className="flex items-start gap-3">

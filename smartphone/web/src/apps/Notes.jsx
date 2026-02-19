@@ -1,32 +1,23 @@
-import { useState, useCallback } from "react";
-
-const INITIAL_NOTES = [
-  {
-    id: "1",
-    title: "Locais importantes",
-    content: "Garagem central - Rua Principal 450\nHospital - Av. Santos, 120\nDelegacia - Centro",
-    date: "19/02/2026",
-  },
-  {
-    id: "2",
-    title: "Contatos do trampo",
-    content: "Jorge (mecânico): 555-0147\nMaria (advogada): 555-0293",
-    date: "18/02/2026",
-  },
-  {
-    id: "3",
-    title: "Lista de compras",
-    content: "Colete\nRádio\nLanterna\nKit médico",
-    date: "17/02/2026",
-  },
-];
+import { useState, useCallback, useEffect } from "react";
+import { fetchBackend } from "../hooks/useNui";
 
 export function NotesApp() {
-  const [notes, setNotes] = useState(INITIAL_NOTES);
+  const [notes, setNotes] = useState([]);
   const [editing, setEditing] = useState(null);
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  // Carregar notas do banco
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const res = await fetchBackend('notes_list');
+      if (res?.notes) setNotes(res.notes);
+      setLoading(false);
+    })();
+  }, []);
 
   const handleOpen = useCallback((note) => {
     setEditing(note);
@@ -42,41 +33,60 @@ export function NotesApp() {
     setContent("");
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!title.trim() && !content.trim()) {
       setCreating(false);
       setEditing(null);
       return;
     }
+
     if (creating) {
-      const newNote = {
-        id: Date.now().toString(),
+      const res = await fetchBackend('notes_save', {
         title: title || "Sem título",
         content,
-        date: new Date().toLocaleDateString("pt-BR"),
-      };
-      setNotes((prev) => [newNote, ...prev]);
+      });
+      if (res?.ok) {
+        setNotes(prev => [{
+          id: res.id,
+          title: title || "Sem título",
+          content,
+          updated_at: new Date().toISOString(),
+        }, ...prev]);
+      }
     } else if (editing) {
-      setNotes((prev) =>
-        prev.map((n) =>
-          n.id === editing.id ? { ...n, title, content, date: new Date().toLocaleDateString("pt-BR") } : n
+      await fetchBackend('notes_save', {
+        id: editing.id,
+        title,
+        content,
+      });
+      setNotes(prev =>
+        prev.map(n =>
+          n.id === editing.id
+            ? { ...n, title, content, updated_at: new Date().toISOString() }
+            : n
         )
       );
     }
+
     setCreating(false);
     setEditing(null);
   }, [creating, editing, title, content]);
 
-  const handleDelete = useCallback((id) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+  const handleDelete = useCallback(async (id) => {
+    await fetchBackend('notes_delete', { id });
+    setNotes(prev => prev.filter(n => n.id !== id));
     setEditing(null);
   }, []);
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    return new Date(dateStr).toLocaleDateString('pt-BR');
+  };
 
   // Editor view
   if (editing || creating) {
     return (
       <div className="flex h-full flex-col bg-black">
-        {/* Editor header */}
         <div className="flex items-center justify-between border-b border-white/[0.08] px-4 py-3">
           <button
             onClick={handleSave}
@@ -115,7 +125,6 @@ export function NotesApp() {
   // List view
   return (
     <div className="flex h-full flex-col bg-black">
-      {/* Search bar area */}
       <div className="px-4 pt-2 pb-3">
         <div className="rounded-xl bg-[#1c1c1e] px-3 py-2">
           <span className="text-[15px] text-white/30">{"Buscar notas..."}</span>
@@ -124,7 +133,7 @@ export function NotesApp() {
 
       <div className="flex items-center justify-between px-4 pb-2">
         <span className="text-[13px] font-medium text-white/40">
-          {notes.length} {notes.length === 1 ? "nota" : "notas"}
+          {loading ? 'Carregando...' : `${notes.length} ${notes.length === 1 ? "nota" : "notas"}`}
         </span>
         <button
           onClick={handleNew}
@@ -148,7 +157,7 @@ export function NotesApp() {
               <span className="line-clamp-2 text-[13px] leading-snug text-white/50">
                 {note.content}
               </span>
-              <span className="mt-1 text-[11px] text-white/25">{note.date}</span>
+              <span className="mt-1 text-[11px] text-white/25">{formatDate(note.updated_at)}</span>
             </button>
           ))}
         </div>

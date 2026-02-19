@@ -1,9 +1,23 @@
 import { useState, useCallback, useEffect } from "react";
 import { HomeScreen } from "./HomeScreen";
+import { APPS, DOCK_APPS } from "./data";
+import { fetchBackend, fetchClient } from "../hooks/useNui";
 import { NotificationBanner } from "./NotificationBanner";
 import { CalculatorApp } from "../apps/Calculator";
 import { NotesApp } from "../apps/Notes";
 import { SettingsApp } from "../apps/Settings";
+import Contacts from "../apps/Contacts";
+import Phone from "../apps/Phone";
+import SMS from "../apps/SMS";
+import WhatsApp from "../apps/WhatsApp";
+import Bank from "../apps/Bank";
+import Instagram from "../apps/Instagram";
+import Twitter from "../apps/Twitter";
+import TikTok from "../apps/TikTok";
+import Tinder from "../apps/Tinder";
+import Marketplace from "../apps/Marketplace";
+import { usePusherEvent } from "../hooks/usePusher";
+import { setIncomingCall } from "../store/callState";
 import usePhone from "../store/usePhone";
 
 const INITIAL_SETTINGS = {
@@ -22,19 +36,22 @@ export default function PhoneShell() {
   const [notification, setNotification] = useState(null);
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
 
-  // Show demo notification when phone opens
+  // Show demo notification in dev mode only
   useEffect(() => {
     if (!isOpen) return;
-    // Reset state when phone opens
     setCurrentApp(null);
     setTransitioning(null);
+
+    // Only in browser dev mode - in FiveM, real notifications come via pusher
+    const isInGame = typeof GetParentResourceName === 'function' || window.invokeNative !== undefined;
+    if (isInGame) return;
 
     const timer = setTimeout(() => {
       setNotification({
         id: "demo",
         appId: "whatsapp",
         appName: "WhatsApp",
-        icon: "./apps/whatsapp.jpg",
+        icon: "./apps/whatsapp.webp",
         color: "#25D366",
         title: "WhatsApp",
         message: "Jorge: E aí mano, bora fazer aquele corre?",
@@ -42,6 +59,124 @@ export default function PhoneShell() {
     }, 1500);
     return () => clearTimeout(timer);
   }, [isOpen]);
+
+  // Load settings from server when phone opens
+  useEffect(() => {
+    if (!isOpen) return;
+    (async () => {
+      const res = await fetchBackend('download');
+      if (res?.settings) {
+        setSettings(prev => ({ ...prev, ...res.settings }));
+      }
+    })();
+  }, [isOpen]);
+
+  // Global: Auto-open Phone app on incoming call
+  usePusherEvent('CALL_INCOMING', useCallback((data) => {
+    setIncomingCall(data); // Store globally so Phone.jsx can read on mount
+    const phoneApp = DOCK_APPS.find(a => a.id === 'phone');
+    if (phoneApp) {
+      setCurrentApp({ ...phoneApp });
+      setTransitioning(null);
+    }
+  }, []));
+
+  // Global: Show SMS notification when not in SMS app
+  usePusherEvent('SMS_MESSAGE', useCallback((data) => {
+    if (currentApp?.component !== 'sms') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({
+        id: `sms-${data.id}`,
+        appId: 'sms',
+        appName: 'Mensagens',
+        icon: './apps/messages.webp',
+        color: '#30D158',
+        title: data.senderName || data.sender_phone,
+        message: data.message,
+      });
+    }
+  }, [currentApp]));
+
+  // Global: Show WhatsApp notification when not in WhatsApp app
+  usePusherEvent('WHATSAPP_MESSAGE', useCallback((data) => {
+    if (currentApp?.component !== 'whatsapp') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({
+        id: `wa-${data.id}`,
+        appId: 'whatsapp',
+        appName: 'WhatsApp',
+        icon: './apps/whatsapp.webp',
+        color: '#25D366',
+        title: data.senderName || data.sender_phone,
+        message: data.message,
+      });
+    }
+  }, [currentApp]));
+
+  // Global: Show Bank notification when receiving money
+  usePusherEvent('BANK_RECEIVED', useCallback((data) => {
+    if (currentApp?.component !== 'bank') {
+      fetchClient('playSound', { sound: 'notification' });
+      const amount = Number(data.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+      setNotification({
+        id: `bank-${data.id}`,
+        appId: 'bank',
+        appName: 'Nubank',
+        icon: './apps/nubank.webp',
+        color: '#820AD1',
+        title: 'PIX recebido',
+        message: `R$ ${amount} de ${data.senderName || data.from_phone}`,
+      });
+    }
+  }, [currentApp]));
+
+  // Global: Tinder match notification
+  usePusherEvent('TINDER_MATCH', useCallback((data) => {
+    if (currentApp?.component !== 'tinder') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({
+        id: `tinder-match-${data.matchId}`,
+        appId: 'tinder',
+        appName: 'Tinder',
+        icon: './apps/tinder.webp',
+        color: '#FE3C72',
+        title: 'Novo Match! 🔥',
+        message: `Você e ${data.profile?.name || 'alguém'} deram match`,
+      });
+    }
+  }, [currentApp]));
+
+  // Global: Tinder message notification
+  usePusherEvent('TINDER_MESSAGE', useCallback((data) => {
+    if (currentApp?.component !== 'tinder') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({
+        id: `tinder-msg-${data.message?.id}`,
+        appId: 'tinder',
+        appName: 'Tinder',
+        icon: './apps/tinder.webp',
+        color: '#FE3C72',
+        title: data.senderName || 'Match',
+        message: data.message?.message || 'Nova mensagem',
+      });
+    }
+  }, [currentApp]));
+
+  // Global: Marketplace sold notification
+  usePusherEvent('MARKET_SOLD', useCallback((data) => {
+    if (currentApp?.component !== 'marketplace') {
+      fetchClient('playSound', { sound: 'notification' });
+      setNotification({
+        id: `market-${data.listingId}`,
+        appId: 'marketplace',
+        appName: 'Marketplace',
+        icon: './apps/marketplace.webp',
+        color: '#34C759',
+        title: 'Item vendido! 🎉',
+        message: `${data.title} por R$ ${Number(data.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      });
+    }
+  }, [currentApp]));
 
   const handleOpenApp = useCallback((app) => {
     setCurrentApp(app);
@@ -65,6 +200,16 @@ export default function PhoneShell() {
     setNotification(null);
   }, []);
 
+  const handleNavigate = useCallback((appId, params) => {
+    const allApps = [...APPS, ...DOCK_APPS];
+    const target = allApps.find(a => a.id === appId);
+    if (target) {
+      handleOpenApp({ ...target, params });
+    }
+  }, [handleOpenApp]);
+
+  const isFullscreen = currentApp?.fullscreen;
+
   const renderApp = () => {
     if (!currentApp) return null;
     switch (currentApp.component) {
@@ -79,6 +224,26 @@ export default function PhoneShell() {
             onSettingsChange={setSettings}
           />
         );
+      case "contacts":
+        return <Contacts onNavigate={handleNavigate} />;
+      case "phone":
+        return <Phone onNavigate={handleNavigate} />;
+      case "sms":
+        return <SMS onNavigate={handleNavigate} params={currentApp?.params} />;
+      case "whatsapp":
+        return <WhatsApp onNavigate={handleNavigate} params={currentApp?.params} />;
+      case "bank":
+        return <Bank onNavigate={handleNavigate} />;
+      case "instagram":
+        return <Instagram onNavigate={handleNavigate} />;
+      case "twitter":
+        return <Twitter onNavigate={handleNavigate} />;
+      case "tiktok":
+        return <TikTok onNavigate={handleNavigate} />;
+      case "tinder":
+        return <Tinder onNavigate={handleNavigate} />;
+      case "marketplace":
+        return <Marketplace onNavigate={handleNavigate} />;
       default:
         // Placeholder for unimplemented apps
         return (
@@ -128,6 +293,7 @@ export default function PhoneShell() {
         <NotificationBanner
           notification={notification}
           onDismiss={dismissNotification}
+          onTap={(appId) => handleNavigate(appId)}
         />
 
         {/* Home Screen */}
@@ -164,7 +330,8 @@ export default function PhoneShell() {
                   : "transform 300ms cubic-bezier(0.32, 0.72, 0, 1)",
             }}
           >
-            {/* App header */}
+            {/* App header - only for non-fullscreen apps */}
+            {!isFullscreen && (
             <div
               className="relative z-10 flex items-center justify-between border-b border-white/[0.06] px-4 pb-2 pt-[60px]"
               style={{
@@ -197,6 +364,10 @@ export default function PhoneShell() {
               </span>
               <div className="w-14" />
             </div>
+            )}
+
+            {/* Fullscreen safe area top */}
+            {isFullscreen && <div style={{ height: 50 }} />}
 
             {/* App content */}
             <div className="flex-1 overflow-hidden">{renderApp()}</div>

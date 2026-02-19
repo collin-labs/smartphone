@@ -1,301 +1,2012 @@
 /**
- * Smartphone - Server Main
+ * Smartphone - Server Main v2.0
  * Agência Soluções Digitais
  * 
- * Responsabilidades:
- * 1. Router de backend:req (recebe chamadas do client.lua)
- * 2. Carrega módulos de cada app
- * 3. Inicializa banco de dados (cria tabelas)
- * 4. Envia pusher events (server → client → NUI)
+ * Fase 2: Rate limiting, player cache, schema completo, contacts
  */
 
 const config = JSON.parse(LoadResourceFile(GetCurrentResourceName(), 'config.json'));
 
 // ============================================
-// REGISTRO DE HANDLERS (módulos registram aqui)
+// RATE LIMITER (inspirado no NPWD)
+// ============================================
+
+const rateLimits = {};
+const RATE_LIMIT_MS = 250;
+
+function isRateLimited(source, handler) {
+    const key = `${source}:${handler}`;
+    const now = Date.now();
+    if (now - (rateLimits[key] || 0) < RATE_LIMIT_MS) return true;
+    rateLimits[key] = now;
+    return false;
+}
+
+setInterval(() => {
+    const now = Date.now();
+    for (const key in rateLimits) {
+        if (now - rateLimits[key] > 30000) delete rateLimits[key];
+    }
+}, 60000);
+
+// ============================================
+// PLAYER CACHE (inspirado no NPWD PlayerService)
+// ============================================
+
+const playerCache = {};
+
+function cachePlayer(source, userId, phone) {
+    playerCache[source] = { userId, phone, cachedAt: Date.now() };
+}
+
+function getCachedPlayer(source) {
+    return playerCache[source] || null;
+}
+
+function getSourceByPhone(phone) {
+    for (const [src, data] of Object.entries(playerCache)) {
+        if (data.phone === phone) return parseInt(src);
+    }
+    return null;
+}
+
+on('playerDropped', () => { delete playerCache[global.source]; });
+
+// ============================================
+// IDENTITY: vRP integration
+// ============================================
+
+async function getUserId(source) {
+    try {
+        if (exports.vrp && exports.vrp.getUserId) {
+            return exports.vrp.getUserId(source);
+        }
+    } catch (e) {}
+    return source; // Fallback para testes
+}
+
+function userIdToPhone(userId) {
+    if (!userId) return '000-000';
+    const p = String(userId).padStart(6, '0');
+    return p.slice(0, 3) + '-' + p.slice(3);
+}
+
+function phoneToUserId(phone) {
+    return parseInt((phone || '').replace(/[^0-9]/g, '')) || 0;
+}
+
+async function getPhoneFromSource(source) {
+    const cached = getCachedPlayer(source);
+    if (cached) return cached.phone;
+    const userId = await getUserId(source);
+    const phone = userIdToPhone(userId);
+    cachePlayer(source, userId, phone);
+    return phone;
+}
+
+async function getUserIdCached(source) {
+    const cached = getCachedPlayer(source);
+    if (cached) return cached.userId;
+    const userId = await getUserId(source);
+    const phone = userIdToPhone(userId);
+    cachePlayer(source, userId, phone);
+    return userId;
+}
+
+// ============================================
+// DATABASE HELPERS
+// ============================================
+
+function dbQuery(query, params = []) {
+    return new Promise((resolve, reject) => {
+        try {
+            exports['oxmysql']['query'](query, params, (result) => {
+                resolve(result || []);
+            });
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+function dbScalar(query, params = []) {
+    return new Promise((resolve, reject) => {
+        try {
+            exports['oxmysql']['scalar'](query, params, (result) => {
+                resolve(result);
+            });
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+function dbInsert(query, params = []) {
+    return new Promise((resolve, reject) => {
+        try {
+            exports['oxmysql']['insert'](query, params, (result) => {
+                resolve(result);
+            });
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+function dbUpdate(query, params = []) {
+    return new Promise((resolve, reject) => {
+        try {
+            exports['oxmysql']['update'](query, params, (result) => {
+                resolve(result);
+            });
+        } catch (e) {
+            reject(e);
+        }
+    });
+}
+async function dbSingle(query, params = []) {
+    const rows = await dbQuery(query, params);
+    return rows && rows.length > 0 ? rows[0] : null;
+}
+
+// ============================================
+// HANDLER REGISTRY + ROUTER
 // ============================================
 
 const handlers = {};
 
-/**
- * Registra um handler de backend
- * @param {string} name - Nome da função (ex: 'sms_send')
- * @param {function} fn - async (source, args) => result
- */
 function registerHandler(name, fn) {
     handlers[name] = fn;
-    // console.log(`[SMARTPHONE] Handler registrado: ${name}`);
 }
-
-// ============================================
-// ROUTER: backend:req → handler → backend:res
-// ============================================
 
 onNet('smartphone:backend:req', async (id, member, args) => {
     const source = global.source;
 
+    if (isRateLimited(source, member)) {
+        emitNet('smartphone:backend:res', source, id, { error: 'rate_limited' });
+        return;
+    }
+
     try {
         const handler = handlers[member];
-
         if (!handler) {
-            console.error(`[SMARTPHONE] Handler não encontrado: ${member}`);
             emitNet('smartphone:backend:res', source, id, { error: 'handler_not_found', member });
             return;
         }
-
         const result = await handler(source, args);
         emitNet('smartphone:backend:res', source, id, result);
-
     } catch (error) {
-        console.error(`[SMARTPHONE] Erro no handler '${member}':`, error.message);
+        console.error(`[SMARTPHONE] Erro '${member}':`, error.message);
         emitNet('smartphone:backend:res', source, id, { error: error.message });
     }
 });
 
 // ============================================
-// PUSHER: Envia eventos tempo real pro client
+// PUSHER
 // ============================================
 
-/**
- * Envia evento pusher para um jogador específico
- * @param {number} target - source do jogador
- * @param {string} event - nome do evento (ex: 'WHATSAPP_MESSAGE')
- * @param {object} payload - dados do evento
- */
 function pushToPlayer(target, event, payload) {
     emitNet('smartphone:pusher', target, event, payload);
 }
 
-/**
- * Envia evento pusher para todos os jogadores online
- * @param {string} event - nome do evento
- * @param {object} payload - dados do evento
- */
 function pushToAll(event, payload) {
     emitNet('smartphone:pusher', -1, event, payload);
 }
 
 // ============================================
-// DATABASE: Helper para queries oxmysql
+// PROFILE: Criar/buscar perfil automaticamente
 // ============================================
 
-async function dbQuery(query, params = []) {
-    return exports.oxmysql.query_async(query, params);
-}
+async function ensureProfile(source) {
+    const phone = await getPhoneFromSource(source);
+    const userId = await getUserIdCached(source);
 
-async function dbScalar(query, params = []) {
-    return exports.oxmysql.scalar_async(query, params);
-}
+    let profile = await dbSingle(
+        'SELECT * FROM smartphone_profiles WHERE phone_number = ?', [phone]
+    );
 
-async function dbInsert(query, params = []) {
-    return exports.oxmysql.insert_async(query, params);
-}
+    if (!profile) {
+        await dbQuery(
+            'INSERT INTO smartphone_profiles (user_id, phone_number) VALUES (?, ?)',
+            [userId, phone]
+        );
+        profile = { user_id: userId, phone_number: phone, avatar: 'user.jpg', wallpaper: 'default', settings: '{}' };
+    }
 
-async function dbUpdate(query, params = []) {
-    return exports.oxmysql.update_async(query, params);
+    return profile;
 }
 
 // ============================================
-// IDENTITY: Pegar dados do jogador via vRP
+// INIT DATABASE
 // ============================================
 
-/**
- * Retorna o user_id do vRP para um source do FiveM
- * Usa o padrão vRP brasileiro: vRPSv.getUserId(source)
- */
-async function getUserId(source) {
-    try {
-        // Tenta diferentes métodos que o vRP pode expor
-        // Método 1: export direto (vRP mais recente)
-        if (exports.vrp && exports.vrp.getUserId) {
-            return exports.vrp.getUserId(source);
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForOxmysql(maxRetries = 15) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            // Primeiro verifica se o export existe
+            if (!exports['oxmysql'] || !exports['oxmysql']['query']) {
+                throw new Error('oxmysql not ready');
+            }
+            await dbQuery('SELECT 1');
+            return true;
+        } catch (e) {
+            console.log(`[SMARTPHONE] Aguardando oxmysql... (${i + 1}/${maxRetries})`);
+            await sleep(2000);
         }
-    } catch (e) {
-        // Ignora e tenta próximo método
     }
-
-    try {
-        // Método 2: vRP server-side global (padrão brasileiro)
-        // No vRP, o source→user_id fica em vRP.getUserId(source)
-        // Mas em JS no FiveM, precisamos pegar via evento
-        const result = await new Promise((resolve) => {
-            // Fallback: derivar do source (temporário para testes)
-            resolve(source);
-        });
-        return result;
-    } catch (e) {
-        console.error('[SMARTPHONE] Erro ao pegar userId:', e.message);
-        return source; // Fallback: usa source como userId
-    }
+    return false;
 }
-
-/**
- * Retorna o telefone do jogador baseado no user_id
- * Formato: "XXX-XXX" (baseado no user_id)
- */
-function userIdToPhone(userId) {
-    if (!userId) return '000-000';
-    const padded = String(userId).padStart(6, '0');
-    return padded.slice(0, 3) + '-' + padded.slice(3);
-}
-
-/**
- * Retorna phone a partir do source
- */
-async function getPhoneFromSource(source) {
-    const userId = await getUserId(source);
-    return userIdToPhone(userId);
-}
-
-// ============================================
-// INIT: Criar tabelas no banco
-// ============================================
 
 async function initDatabase() {
     console.log('[SMARTPHONE] Inicializando banco de dados...');
 
-    // Tabela principal: dados do telefone
-    await dbQuery(`
-        CREATE TABLE IF NOT EXISTS smartphone_phones (
-            phone VARCHAR(20) PRIMARY KEY,
-            user_id INT NOT NULL,
-            contacts JSON DEFAULT '[]',
-            gallery JSON DEFAULT '[]',
-            settings JSON DEFAULT '{}',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    `);
+    // Esperar oxmysql estar pronto
+    const ready = await waitForOxmysql();
+    if (!ready) {
+        console.error('[SMARTPHONE] ERRO: oxmysql não respondeu após 30s!');
+        return;
+    }
+    console.log('[SMARTPHONE] oxmysql conectado!');
 
-    // SMS
-    await dbQuery(`
-        CREATE TABLE IF NOT EXISTS smartphone_sms (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            sender VARCHAR(20) NOT NULL,
-            receiver VARCHAR(20) NOT NULL,
-            message TEXT NOT NULL,
-            is_read TINYINT DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_sender (sender),
-            INDEX idx_receiver (receiver)
-        )
-    `);
+    const schema = LoadResourceFile(GetCurrentResourceName(), 'smartphone.sql');
+    if (schema) {
+        const statements = schema
+            .split(';')
+            .map(s => s.trim())
+            .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('SET'));
 
-    // Histórico de chamadas
-    await dbQuery(`
-        CREATE TABLE IF NOT EXISTS smartphone_calls (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            caller VARCHAR(20) NOT NULL,
-            receiver VARCHAR(20) NOT NULL,
-            duration INT DEFAULT 0,
-            status ENUM('completed', 'missed', 'rejected') DEFAULT 'missed',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_caller (caller),
-            INDEX idx_receiver (receiver)
-        )
-    `);
-
-    // Notas
-    await dbQuery(`
-        CREATE TABLE IF NOT EXISTS smartphone_notes (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            phone VARCHAR(20) NOT NULL,
-            title VARCHAR(255) DEFAULT '',
-            content TEXT DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-            INDEX idx_phone (phone)
-        )
-    `);
-
-    // Yellow Pages
-    await dbQuery(`
-        CREATE TABLE IF NOT EXISTS smartphone_yellowpages (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            phone VARCHAR(20) NOT NULL,
-            text TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            INDEX idx_phone (phone)
-        )
-    `);
-
-    console.log('[SMARTPHONE] Tabelas criadas/verificadas com sucesso');
+        let created = 0;
+        for (const stmt of statements) {
+            try {
+                await dbQuery(stmt);
+                created++;
+            } catch (e) {
+                const msg = e?.message || String(e);
+                if (!msg.includes('already exists')) {
+                    console.error(`[SMARTPHONE] SQL: ${msg.slice(0, 120)}`);
+                }
+            }
+        }
+        console.log(`[SMARTPHONE] Schema carregado (${created} statements executados)`);
+    } else {
+        console.warn('[SMARTPHONE] smartphone.sql não encontrado!');
+    }
 }
 
 // ============================================
-// HANDLERS DO CORE (getSettings, download, ping)
+// HANDLERS: Core
 // ============================================
 
-registerHandler('ping', async (source, args) => {
+registerHandler('ping', async (source) => {
     const phone = await getPhoneFromSource(source);
-    console.log(`[SMARTPHONE] Ping recebido de ${phone} (source: ${source})`);
+    return { ok: true, phone, timestamp: Date.now() };
+});
+
+registerHandler('download', async (source) => {
+    const profile = await ensureProfile(source);
+    const userId = profile.user_id;
+    const phone = profile.phone_number;
+
+    let settings = {};
+    try {
+        settings = typeof profile.settings === 'string' ? JSON.parse(profile.settings) : (profile.settings || {});
+    } catch (e) { settings = {}; }
+
+    const contacts = await dbQuery(
+        'SELECT id, contact_phone, contact_name FROM smartphone_contacts WHERE user_id = ? ORDER BY contact_name ASC',
+        [userId]
+    );
+
+    const blocked = await dbQuery(
+        'SELECT blocked_phone FROM smartphone_blocked WHERE user_id = ?', [userId]
+    );
+
+    return {
+        phone, userId, config,
+        settings: { ...config, ...settings },
+        identity: { phone, name: `Jogador ${userId}` },
+        contacts: contacts || [],
+        blocked: (blocked || []).map(b => b.blocked_phone),
+    };
+});
+
+registerHandler('getSettings', async (source) => {
+    return await handlers['download'](source);
+});
+
+// ============================================
+// HANDLERS: Contacts
+// ============================================
+
+registerHandler('contacts_list', async (source) => {
+    const userId = await getUserIdCached(source);
+    const contacts = await dbQuery(
+        'SELECT id, contact_phone, contact_name, created_at FROM smartphone_contacts WHERE user_id = ? ORDER BY contact_name ASC',
+        [userId]
+    );
+    return { ok: true, contacts: contacts || [] };
+});
+
+registerHandler('contacts_add', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { phone: contactPhone, name: contactName } = args;
+
+    if (!contactPhone || !contactName) return { error: 'Número e nome são obrigatórios' };
+
+    try {
+        const id = await dbInsert(
+            'INSERT INTO smartphone_contacts (user_id, contact_phone, contact_name) VALUES (?, ?, ?)',
+            [userId, contactPhone, contactName]
+        );
+        return { ok: true, contact: { id, contact_phone: contactPhone, contact_name: contactName } };
+    } catch (e) {
+        if (e.message?.includes('Duplicate')) return { error: 'Contato já existe' };
+        throw e;
+    }
+});
+
+registerHandler('contacts_update', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { id, name, phone } = args;
+    if (!id) return { error: 'ID obrigatório' };
+
+    const updates = [];
+    const params = [];
+    if (name) { updates.push('contact_name = ?'); params.push(name); }
+    if (phone) { updates.push('contact_phone = ?'); params.push(phone); }
+
+    if (updates.length > 0) {
+        params.push(id, userId);
+        await dbUpdate(`UPDATE smartphone_contacts SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`, params);
+    }
+    return { ok: true };
+});
+
+registerHandler('contacts_delete', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    await dbUpdate('DELETE FROM smartphone_contacts WHERE id = ? AND user_id = ?', [args.id, userId]);
+    return { ok: true };
+});
+
+registerHandler('contacts_block', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    await dbQuery('INSERT IGNORE INTO smartphone_blocked (user_id, blocked_phone) VALUES (?, ?)', [userId, args.phone]);
+    return { ok: true };
+});
+
+registerHandler('contacts_unblock', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    await dbUpdate('DELETE FROM smartphone_blocked WHERE user_id = ? AND blocked_phone = ?', [userId, args.phone]);
+    return { ok: true };
+});
+
+registerHandler('contacts_blocked_list', async (source) => {
+    const userId = await getUserIdCached(source);
+    const blocked = await dbQuery('SELECT blocked_phone FROM smartphone_blocked WHERE user_id = ?', [userId]);
+    return { ok: true, blocked: (blocked || []).map(b => b.blocked_phone) };
+});
+
+registerHandler('resolve_phone', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const contact = await dbSingle(
+        'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+        [userId, args.phone]
+    );
+    return { ok: true, phone: args.phone, name: contact?.contact_name || null, isContact: !!contact };
+});
+
+// ============================================
+// HANDLERS: Profile / Settings
+// ============================================
+
+registerHandler('profile_update', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    const updates = [];
+    const params = [];
+    if (args.avatar !== undefined) { updates.push('avatar = ?'); params.push(args.avatar); }
+    if (args.wallpaper !== undefined) { updates.push('wallpaper = ?'); params.push(args.wallpaper); }
+    if (updates.length > 0) {
+        params.push(phone);
+        await dbUpdate(`UPDATE smartphone_profiles SET ${updates.join(', ')} WHERE phone_number = ?`, params);
+    }
+    return { ok: true };
+});
+
+registerHandler('settings_save', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    await dbUpdate('UPDATE smartphone_profiles SET settings = ? WHERE phone_number = ?', [JSON.stringify(args), phone]);
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: Service calls (190, 192, 193)
+// ============================================
+
+registerHandler('service_call', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    const { number, message, location } = args;
+    const { x, y, z } = location || { x: 0, y: 0, z: 0 };
+
+    const id = await dbInsert(
+        'INSERT INTO smartphone_service_calls (caller_phone, service_number, message, location_x, location_y, location_z) VALUES (?, ?, ?, ?, ?, ?)',
+        [phone, number, message || '', x, y, z]
+    );
+
+    pushToAll('SERVICE_CALL', { id, caller: phone, service: number, message, location: { x, y, z } });
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: Bank (Nubank)
+// ============================================
+
+registerHandler('bank_balance', async (source) => {
+    const userId = await getUserIdCached(source);
+    
+    // Buscar saldo via vRP
+    let balance = 0;
+    try {
+        if (typeof exports.vrp?.getMoney === 'function') {
+            balance = exports.vrp.getMoney(parseInt(userId)) || 0;
+        }
+    } catch (e) {
+        // Fallback: tentar getBankMoney
+        try {
+            if (typeof exports.vrp?.getBankMoney === 'function') {
+                balance = exports.vrp.getBankMoney(parseInt(userId)) || 0;
+            }
+        } catch (e2) {
+            balance = 0;
+        }
+    }
+
+    return { ok: true, balance };
+});
+
+registerHandler('bank_statement', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { limit } = args || {};
+
+    const transactions = await dbQuery(`
+        SELECT t.*, 
+            CASE 
+                WHEN t.from_phone = ? THEN 'sent'
+                ELSE 'received'
+            END AS direction
+        FROM smartphone_bank_transactions t
+        WHERE t.from_phone = ? OR t.to_phone = ?
+        ORDER BY t.created_at DESC
+        LIMIT ?
+    `, [myPhone, myPhone, myPhone, limit || 50]);
+
+    // Resolver nomes dos contatos
+    const userId = await getUserIdCached(source);
+    const resolved = [];
+    for (const tx of (transactions || [])) {
+        const otherPhone = tx.direction === 'sent' ? tx.to_phone : tx.from_phone;
+        const contact = await dbSingle(
+            'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+            [userId, otherPhone]
+        );
+        resolved.push({
+            ...tx,
+            other_phone: otherPhone,
+            other_name: contact?.contact_name || null,
+        });
+    }
+
+    return { ok: true, transactions: resolved };
+});
+
+registerHandler('bank_pix', async (source, args) => {
+    const senderPhone = await getPhoneFromSource(source);
+    const senderId = await getUserIdCached(source);
+    const { to, amount, description } = args;
+
+    if (!to) return { error: 'Chave PIX obrigatória' };
+    if (!amount || amount <= 0) return { error: 'Valor inválido' };
+    if (to === senderPhone) return { error: 'Não pode transferir pra si mesmo' };
+
+    // Verificar se destinatário existe
+    const receiverProfile = await dbSingle(
+        'SELECT phone_number FROM smartphone_profiles WHERE phone_number = ?', [to]
+    );
+    if (!receiverProfile) return { error: 'Chave PIX não encontrada' };
+
+    // Verificar saldo
+    let balance = 0;
+    try {
+        if (typeof exports.vrp?.getMoney === 'function') {
+            balance = exports.vrp.getMoney(parseInt(senderId)) || 0;
+        } else if (typeof exports.vrp?.getBankMoney === 'function') {
+            balance = exports.vrp.getBankMoney(parseInt(senderId)) || 0;
+        }
+    } catch (e) { balance = 0; }
+
+    if (balance < amount) return { error: 'Saldo insuficiente' };
+
+    // Executar transferência via vRP
+    const receiverUserId = phoneToUserId(to);
+    try {
+        if (typeof exports.vrp?.removeMoney === 'function') {
+            exports.vrp.removeMoney(parseInt(senderId), amount);
+        } else if (typeof exports.vrp?.removeBankMoney === 'function') {
+            exports.vrp.removeBankMoney(parseInt(senderId), amount);
+        }
+
+        if (typeof exports.vrp?.addMoney === 'function') {
+            exports.vrp.addMoney(parseInt(receiverUserId), amount);
+        } else if (typeof exports.vrp?.addBankMoney === 'function') {
+            exports.vrp.addBankMoney(parseInt(receiverUserId), amount);
+        }
+    } catch (e) {
+        return { error: 'Erro ao processar transferência' };
+    }
+
+    // Registrar transação
+    const txId = await dbInsert(
+        'INSERT INTO smartphone_bank_transactions (from_phone, to_phone, amount, type, description) VALUES (?, ?, ?, ?, ?)',
+        [senderPhone, to, amount, 'pix', description || 'PIX']
+    );
+
+    const txData = {
+        id: txId,
+        from_phone: senderPhone,
+        to_phone: to,
+        amount,
+        type: 'pix',
+        description: description || 'PIX',
+        created_at: new Date().toISOString(),
+    };
+
+    // Push pro destinatário
+    const receiverSource = getSourceByPhone(to);
+    if (receiverSource) {
+        const senderContact = await dbSingle(
+            'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+            [receiverUserId, senderPhone]
+        );
+        pushToPlayer(receiverSource, 'BANK_RECEIVED', {
+            ...txData,
+            senderName: senderContact?.contact_name || senderPhone,
+        });
+    }
+
     return {
         ok: true,
-        phone: phone,
-        timestamp: Date.now(),
-        message: 'Smartphone server online! 🟢'
+        transaction: txData,
+        newBalance: balance - amount,
     };
 });
 
-registerHandler('getSettings', async (source, args) => {
-    const phone = await getPhoneFromSource(source);
-    const userId = await getUserId(source);
+registerHandler('bank_receipt', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { transactionId } = args;
 
-    // Buscar ou criar dados do telefone
-    let phoneData = await dbQuery('SELECT * FROM smartphone_phones WHERE phone = ?', [phone]);
+    const tx = await dbSingle(
+        'SELECT * FROM smartphone_bank_transactions WHERE id = ? AND (from_phone = ? OR to_phone = ?)',
+        [transactionId, myPhone, myPhone]
+    );
+    if (!tx) return { error: 'Transação não encontrada' };
 
-    if (!phoneData || phoneData.length === 0) {
-        // Primeiro acesso: criar registro
-        await dbQuery(
-            'INSERT INTO smartphone_phones (phone, user_id) VALUES (?, ?)',
-            [phone, userId]
-        );
-        phoneData = [{ phone, user_id: userId, contacts: '[]', gallery: '[]', settings: '{}' }];
-    }
-
-    const row = phoneData[0];
-    let userSettings = {};
-    try {
-        userSettings = typeof row.settings === 'string' ? JSON.parse(row.settings) : row.settings;
-    } catch (e) {
-        userSettings = {};
-    }
-
-    return {
-        phone: phone,
-        userId: userId,
-        config: config,
-        settings: {
-            ...config,
-            ...userSettings
-        },
-        identity: {
-            phone: phone,
-            name: `Jogador ${userId || 0}`
-        }
-    };
-});
-
-registerHandler('download', async (source, args) => {
-    // Bootstrap: retorna config inicial + dados do jogador
-    return await handlers['getSettings'](source, args);
+    return { ok: true, transaction: tx };
 });
 
 // ============================================
-// EXPORTS (para módulos usarem)
+// HANDLERS: Notes
+// ============================================
+
+registerHandler('notes_list', async (source) => {
+    const phone = await getPhoneFromSource(source);
+    const notes = await dbQuery(
+        'SELECT id, title, content, updated_at FROM smartphone_notes WHERE phone = ? ORDER BY updated_at DESC',
+        [phone]
+    );
+    return { ok: true, notes: notes || [] };
+});
+
+registerHandler('notes_save', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    const { id, title, content } = args;
+
+    if (id) {
+        // Atualizar existente
+        await dbUpdate(
+            'UPDATE smartphone_notes SET title = ?, content = ? WHERE id = ? AND phone = ?',
+            [title || '', content || '', id, phone]
+        );
+        return { ok: true, id };
+    } else {
+        // Criar nova
+        const newId = await dbInsert(
+            'INSERT INTO smartphone_notes (phone, title, content) VALUES (?, ?, ?)',
+            [phone, title || '', content || '']
+        );
+        return { ok: true, id: newId };
+    }
+});
+
+registerHandler('notes_delete', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    await dbUpdate('DELETE FROM smartphone_notes WHERE id = ? AND phone = ?', [args.id, phone]);
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: SMS (Conversations model)
+// ============================================
+
+registerHandler('sms_conversations', async (source) => {
+    const myPhone = await getPhoneFromSource(source);
+    const userId = await getUserIdCached(source);
+
+    // Buscar conversas onde sou participante, com última mensagem
+    const conversations = await dbQuery(`
+        SELECT 
+            c.id,
+            c.is_group,
+            c.name AS group_name,
+            p.unread_count,
+            (SELECT m.message FROM smartphone_sms_messages m 
+             WHERE m.conversation_id = c.id AND m.is_deleted = 0 
+             ORDER BY m.id DESC LIMIT 1) AS last_message,
+            (SELECT m.created_at FROM smartphone_sms_messages m 
+             WHERE m.conversation_id = c.id AND m.is_deleted = 0 
+             ORDER BY m.id DESC LIMIT 1) AS last_message_at,
+            (SELECT m.sender_phone FROM smartphone_sms_messages m 
+             WHERE m.conversation_id = c.id AND m.is_deleted = 0 
+             ORDER BY m.id DESC LIMIT 1) AS last_sender
+        FROM smartphone_sms_conversations c
+        JOIN smartphone_sms_participants p ON p.conversation_id = c.id AND p.phone = ?
+        ORDER BY last_message_at DESC
+    `, [myPhone]);
+
+    // Resolver nomes e outros participantes
+    const resolved = [];
+    for (const conv of (conversations || [])) {
+        // Buscar outros participantes
+        const participants = await dbQuery(
+            'SELECT phone FROM smartphone_sms_participants WHERE conversation_id = ? AND phone != ?',
+            [conv.id, myPhone]
+        );
+        const otherPhones = (participants || []).map(p => p.phone);
+
+        // Resolver nome do contato (pra chat 1:1)
+        let displayName = conv.group_name;
+        if (!displayName && otherPhones.length === 1) {
+            const contact = await dbSingle(
+                'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+                [userId, otherPhones[0]]
+            );
+            displayName = contact?.contact_name || otherPhones[0];
+        } else if (!displayName) {
+            displayName = otherPhones.join(', ');
+        }
+
+        resolved.push({
+            id: conv.id,
+            name: displayName,
+            otherPhones,
+            isGroup: !!conv.is_group,
+            unreadCount: conv.unread_count || 0,
+            lastMessage: conv.last_message,
+            lastMessageAt: conv.last_message_at,
+            lastSender: conv.last_sender,
+        });
+    }
+
+    return { ok: true, conversations: resolved };
+});
+
+registerHandler('sms_messages', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { conversationId, limit } = args;
+
+    if (!conversationId) return { error: 'conversationId obrigatório' };
+
+    // Verificar se sou participante
+    const participant = await dbSingle(
+        'SELECT 1 FROM smartphone_sms_participants WHERE conversation_id = ? AND phone = ?',
+        [conversationId, myPhone]
+    );
+    if (!participant) return { error: 'Sem acesso' };
+
+    const messages = await dbQuery(`
+        SELECT id, sender_phone, message, media, created_at
+        FROM smartphone_sms_messages
+        WHERE conversation_id = ? AND is_deleted = 0
+        ORDER BY id DESC
+        LIMIT ?
+    `, [conversationId, limit || 50]);
+
+    // Marcar como lido
+    await dbUpdate(
+        'UPDATE smartphone_sms_participants SET unread_count = 0 WHERE conversation_id = ? AND phone = ?',
+        [conversationId, myPhone]
+    );
+
+    return { ok: true, messages: (messages || []).reverse() };
+});
+
+registerHandler('sms_send', async (source, args) => {
+    const senderPhone = await getPhoneFromSource(source);
+    const { conversationId, to, message } = args;
+
+    if (!message || !message.trim()) return { error: 'Mensagem vazia' };
+
+    let convId = conversationId;
+
+    // Se não tem conversationId, criar ou encontrar conversa existente
+    if (!convId && to) {
+        // Buscar conversa existente entre os dois
+        const existing = await dbSingle(`
+            SELECT p1.conversation_id 
+            FROM smartphone_sms_participants p1
+            JOIN smartphone_sms_participants p2 ON p1.conversation_id = p2.conversation_id
+            JOIN smartphone_sms_conversations c ON c.id = p1.conversation_id
+            WHERE p1.phone = ? AND p2.phone = ? AND c.is_group = 0
+        `, [senderPhone, to]);
+
+        if (existing) {
+            convId = existing.conversation_id;
+        } else {
+            // Criar nova conversa
+            convId = await dbInsert(
+                'INSERT INTO smartphone_sms_conversations (is_group) VALUES (0)'
+            );
+            await dbQuery(
+                'INSERT INTO smartphone_sms_participants (conversation_id, phone) VALUES (?, ?), (?, ?)',
+                [convId, senderPhone, convId, to]
+            );
+        }
+    }
+
+    if (!convId) return { error: 'Destino obrigatório' };
+
+    // Inserir mensagem
+    const msgId = await dbInsert(
+        'INSERT INTO smartphone_sms_messages (conversation_id, sender_phone, message) VALUES (?, ?, ?)',
+        [convId, senderPhone, message.trim()]
+    );
+
+    // Atualizar timestamp da conversa
+    await dbUpdate(
+        'UPDATE smartphone_sms_conversations SET updated_at = NOW() WHERE id = ?',
+        [convId]
+    );
+
+    // Incrementar unread para outros participantes
+    await dbUpdate(
+        'UPDATE smartphone_sms_participants SET unread_count = unread_count + 1 WHERE conversation_id = ? AND phone != ?',
+        [convId, senderPhone]
+    );
+
+    const msgData = {
+        id: msgId,
+        conversationId: convId,
+        sender_phone: senderPhone,
+        message: message.trim(),
+        created_at: new Date().toISOString(),
+    };
+
+    // Push para outros participantes online
+    const participants = await dbQuery(
+        'SELECT phone FROM smartphone_sms_participants WHERE conversation_id = ? AND phone != ?',
+        [convId, senderPhone]
+    );
+
+    const senderUserId = await getUserIdCached(source);
+    for (const p of (participants || [])) {
+        const targetSource = getSourceByPhone(p.phone);
+        if (targetSource) {
+            // Resolver nome do sender nos contatos do receiver
+            const targetUserId = phoneToUserId(p.phone);
+            const senderContact = await dbSingle(
+                'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+                [targetUserId, senderPhone]
+            );
+
+            pushToPlayer(targetSource, 'SMS_MESSAGE', {
+                ...msgData,
+                senderName: senderContact?.contact_name || senderPhone,
+            });
+        }
+    }
+
+    return { ok: true, message: msgData };
+});
+
+registerHandler('sms_mark_read', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { conversationId } = args;
+    await dbUpdate(
+        'UPDATE smartphone_sms_participants SET unread_count = 0 WHERE conversation_id = ? AND phone = ?',
+        [conversationId, myPhone]
+    );
+    return { ok: true };
+});
+
+registerHandler('sms_delete_conversation', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { conversationId } = args;
+
+    // Remover participação (não apaga a conversa inteira)
+    await dbUpdate(
+        'DELETE FROM smartphone_sms_participants WHERE conversation_id = ? AND phone = ?',
+        [conversationId, myPhone]
+    );
+
+    // Se ninguém mais participa, apagar conversa e mensagens
+    const remaining = await dbScalar(
+        'SELECT COUNT(*) FROM smartphone_sms_participants WHERE conversation_id = ?',
+        [conversationId]
+    );
+    if (remaining === 0) {
+        await dbUpdate('DELETE FROM smartphone_sms_messages WHERE conversation_id = ?', [conversationId]);
+        await dbUpdate('DELETE FROM smartphone_sms_conversations WHERE id = ?', [conversationId]);
+    }
+
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: WhatsApp
+// ============================================
+
+registerHandler('whatsapp_chats', async (source) => {
+    const myPhone = await getPhoneFromSource(source);
+    const userId = await getUserIdCached(source);
+
+    const chats = await dbQuery(`
+        SELECT 
+            c.id, c.type, c.name AS group_name, c.icon,
+            p.unread_count,
+            (SELECT m.message FROM smartphone_whatsapp_messages m 
+             WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_message,
+            (SELECT m.created_at FROM smartphone_whatsapp_messages m 
+             WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_message_at,
+            (SELECT m.sender_phone FROM smartphone_whatsapp_messages m 
+             WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_sender,
+            (SELECT m.is_read FROM smartphone_whatsapp_messages m 
+             WHERE m.chat_id = c.id ORDER BY m.id DESC LIMIT 1) AS last_is_read
+        FROM smartphone_whatsapp_chats c
+        JOIN smartphone_whatsapp_participants p ON p.chat_id = c.id AND p.phone = ?
+        ORDER BY last_message_at DESC
+    `, [myPhone]);
+
+    const resolved = [];
+    for (const chat of (chats || [])) {
+        const participants = await dbQuery(
+            'SELECT phone FROM smartphone_whatsapp_participants WHERE chat_id = ? AND phone != ?',
+            [chat.id, myPhone]
+        );
+        const otherPhones = (participants || []).map(p => p.phone);
+
+        let displayName = chat.group_name;
+        if (!displayName && otherPhones.length === 1) {
+            const contact = await dbSingle(
+                'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+                [userId, otherPhones[0]]
+            );
+            displayName = contact?.contact_name || otherPhones[0];
+        } else if (!displayName) {
+            displayName = otherPhones.join(', ');
+        }
+
+        resolved.push({
+            id: chat.id,
+            type: chat.type,
+            name: displayName,
+            icon: chat.icon,
+            otherPhones,
+            unreadCount: chat.unread_count || 0,
+            lastMessage: chat.last_message,
+            lastMessageAt: chat.last_message_at,
+            lastSender: chat.last_sender,
+            lastIsRead: chat.last_is_read,
+        });
+    }
+
+    return { ok: true, chats: resolved };
+});
+
+registerHandler('whatsapp_messages', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { chatId, limit } = args;
+    if (!chatId) return { error: 'chatId obrigatório' };
+
+    const participant = await dbSingle(
+        'SELECT 1 FROM smartphone_whatsapp_participants WHERE chat_id = ? AND phone = ?',
+        [chatId, myPhone]
+    );
+    if (!participant) return { error: 'Sem acesso' };
+
+    const messages = await dbQuery(`
+        SELECT id, sender_phone, message, type, media, is_read, created_at
+        FROM smartphone_whatsapp_messages
+        WHERE chat_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+    `, [chatId, limit || 50]);
+
+    // Marcar como lido
+    await dbUpdate(
+        'UPDATE smartphone_whatsapp_participants SET unread_count = 0 WHERE chat_id = ? AND phone = ?',
+        [chatId, myPhone]
+    );
+    // Marcar mensagens como lidas (tick azul)
+    await dbUpdate(
+        'UPDATE smartphone_whatsapp_messages SET is_read = 1 WHERE chat_id = ? AND sender_phone != ?',
+        [chatId, myPhone]
+    );
+
+    // Push tick azul pro sender
+    const otherParticipants = await dbQuery(
+        'SELECT phone FROM smartphone_whatsapp_participants WHERE chat_id = ? AND phone != ?',
+        [chatId, myPhone]
+    );
+    for (const p of (otherParticipants || [])) {
+        const targetSource = getSourceByPhone(p.phone);
+        if (targetSource) {
+            pushToPlayer(targetSource, 'WHATSAPP_READ', { chatId });
+        }
+    }
+
+    return { ok: true, messages: (messages || []).reverse() };
+});
+
+registerHandler('whatsapp_send', async (source, args) => {
+    const senderPhone = await getPhoneFromSource(source);
+    const { chatId, to, message, type } = args;
+
+    if (!message || !message.trim()) return { error: 'Mensagem vazia' };
+
+    let targetChatId = chatId;
+
+    // Criar ou encontrar chat privado
+    if (!targetChatId && to) {
+        const existing = await dbSingle(`
+            SELECT p1.chat_id 
+            FROM smartphone_whatsapp_participants p1
+            JOIN smartphone_whatsapp_participants p2 ON p1.chat_id = p2.chat_id
+            JOIN smartphone_whatsapp_chats c ON c.id = p1.chat_id
+            WHERE p1.phone = ? AND p2.phone = ? AND c.type = 'private'
+        `, [senderPhone, to]);
+
+        if (existing) {
+            targetChatId = existing.chat_id;
+        } else {
+            targetChatId = await dbInsert(
+                "INSERT INTO smartphone_whatsapp_chats (type) VALUES ('private')"
+            );
+            await dbQuery(
+                'INSERT INTO smartphone_whatsapp_participants (chat_id, phone) VALUES (?, ?), (?, ?)',
+                [targetChatId, senderPhone, targetChatId, to]
+            );
+        }
+    }
+
+    if (!targetChatId) return { error: 'Destino obrigatório' };
+
+    const msgId = await dbInsert(
+        'INSERT INTO smartphone_whatsapp_messages (chat_id, sender_phone, message, type) VALUES (?, ?, ?, ?)',
+        [targetChatId, senderPhone, message.trim(), type || 'text']
+    );
+
+    // Incrementar unread
+    await dbUpdate(
+        'UPDATE smartphone_whatsapp_participants SET unread_count = unread_count + 1 WHERE chat_id = ? AND phone != ?',
+        [targetChatId, senderPhone]
+    );
+
+    const msgData = {
+        id: msgId,
+        chatId: targetChatId,
+        sender_phone: senderPhone,
+        message: message.trim(),
+        type: type || 'text',
+        is_read: 0,
+        created_at: new Date().toISOString(),
+    };
+
+    // Push
+    const participants = await dbQuery(
+        'SELECT phone FROM smartphone_whatsapp_participants WHERE chat_id = ? AND phone != ?',
+        [targetChatId, senderPhone]
+    );
+
+    for (const p of (participants || [])) {
+        const targetSource = getSourceByPhone(p.phone);
+        if (targetSource) {
+            const targetUserId = phoneToUserId(p.phone);
+            const senderContact = await dbSingle(
+                'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+                [targetUserId, senderPhone]
+            );
+            pushToPlayer(targetSource, 'WHATSAPP_MESSAGE', {
+                ...msgData,
+                senderName: senderContact?.contact_name || senderPhone,
+            });
+        }
+    }
+
+    return { ok: true, message: msgData };
+});
+
+registerHandler('whatsapp_mark_read', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { chatId } = args;
+    await dbUpdate(
+        'UPDATE smartphone_whatsapp_participants SET unread_count = 0 WHERE chat_id = ? AND phone = ?',
+        [chatId, myPhone]
+    );
+    await dbUpdate(
+        'UPDATE smartphone_whatsapp_messages SET is_read = 1 WHERE chat_id = ? AND sender_phone != ?',
+        [chatId, myPhone]
+    );
+    return { ok: true };
+});
+
+registerHandler('whatsapp_delete_chat', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { chatId } = args;
+    await dbUpdate(
+        'DELETE FROM smartphone_whatsapp_participants WHERE chat_id = ? AND phone = ?',
+        [chatId, myPhone]
+    );
+    const remaining = await dbScalar(
+        'SELECT COUNT(*) FROM smartphone_whatsapp_participants WHERE chat_id = ?', [chatId]
+    );
+    if (remaining === 0) {
+        await dbUpdate('DELETE FROM smartphone_whatsapp_messages WHERE chat_id = ?', [chatId]);
+        await dbUpdate('DELETE FROM smartphone_whatsapp_chats WHERE id = ?', [chatId]);
+    }
+    return { ok: true };
+});
+// ============================================
+// ============================================
+// HANDLERS: Instagram
+// ============================================
+
+// Helper: get or create instagram profile
+async function getIgProfile(source) {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    let profile = await dbSingle('SELECT * FROM smartphone_instagram_profiles WHERE user_id = ?', [userId]);
+    if (!profile) {
+        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const username = phone.replace(/[^0-9]/g, '');
+        const id = await dbInsert(
+            'INSERT INTO smartphone_instagram_profiles (user_id, username, name) VALUES (?, ?, ?)',
+            [userId, username, name]
+        );
+        profile = { id, user_id: parseInt(userId), username, name, bio: '', avatar: null };
+    }
+    return profile;
+}
+
+registerHandler('ig_profile', async (source, args) => {
+    if (args?.profileId) {
+        const profile = await dbSingle('SELECT * FROM smartphone_instagram_profiles WHERE id = ?', [args.profileId]);
+        if (!profile) return { error: 'Perfil não encontrado' };
+        const posts = await dbQuery(
+            'SELECT id, image, caption, created_at, (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id) AS likes_count, (SELECT COUNT(*) FROM smartphone_instagram_comments WHERE post_id = p.id) AS comments_count FROM smartphone_instagram_posts p WHERE profile_id = ? ORDER BY id DESC',
+            [args.profileId]
+        );
+        const followers = await dbScalar('SELECT COUNT(*) FROM smartphone_instagram_follows WHERE following_id = ?', [args.profileId]);
+        const following = await dbScalar('SELECT COUNT(*) FROM smartphone_instagram_follows WHERE follower_id = ?', [args.profileId]);
+        const myProfile = await getIgProfile(source);
+        const isFollowing = await dbScalar('SELECT COUNT(*) FROM smartphone_instagram_follows WHERE follower_id = ? AND following_id = ?', [myProfile.id, args.profileId]);
+        return { ok: true, profile: { ...profile, followers, following, posts: posts || [] }, isFollowing: isFollowing > 0, myProfileId: myProfile.id };
+    }
+    const profile = await getIgProfile(source);
+    const posts = await dbQuery(
+        'SELECT id, image, caption, created_at, (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id) AS likes_count, (SELECT COUNT(*) FROM smartphone_instagram_comments WHERE post_id = p.id) AS comments_count FROM smartphone_instagram_posts p WHERE profile_id = ? ORDER BY id DESC',
+        [profile.id]
+    );
+    const followers = await dbScalar('SELECT COUNT(*) FROM smartphone_instagram_follows WHERE following_id = ?', [profile.id]);
+    const following = await dbScalar('SELECT COUNT(*) FROM smartphone_instagram_follows WHERE follower_id = ?', [profile.id]);
+    return { ok: true, profile: { ...profile, followers, following, posts: posts || [] }, myProfileId: profile.id };
+});
+
+registerHandler('ig_profile_update', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { bio, display_name } = args;
+    const updates = [];
+    const params = [];
+    if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
+    if (display_name !== undefined) { updates.push('name = ?'); params.push(display_name); }
+    if (updates.length > 0) {
+        params.push(profile.id);
+        await dbUpdate(`UPDATE smartphone_instagram_profiles SET ${updates.join(', ')} WHERE id = ?`, params);
+    }
+    return { ok: true };
+});
+
+registerHandler('ig_feed', async (source) => {
+    const profile = await getIgProfile(source);
+    const posts = await dbQuery(`
+        SELECT p.id, p.image, p.caption, p.created_at, p.profile_id,
+            pr.username, pr.name, pr.avatar,
+            (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id) AS likes_count,
+            (SELECT COUNT(*) FROM smartphone_instagram_comments WHERE post_id = p.id) AS comments_count,
+            (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id AND profile_id = ?) AS is_liked
+        FROM smartphone_instagram_posts p
+        JOIN smartphone_instagram_profiles pr ON pr.id = p.profile_id
+        WHERE p.profile_id IN (
+            SELECT following_id FROM smartphone_instagram_follows WHERE follower_id = ?
+        ) OR p.profile_id = ?
+        ORDER BY p.id DESC LIMIT 50
+    `, [profile.id, profile.id, profile.id]);
+    return { ok: true, posts: posts || [], myProfileId: profile.id };
+});
+
+registerHandler('ig_explore', async (source) => {
+    const profile = await getIgProfile(source);
+    const posts = await dbQuery(`
+        SELECT p.id, p.image, p.caption, p.created_at, p.profile_id,
+            pr.username, pr.name, pr.avatar,
+            (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id) AS likes_count,
+            (SELECT COUNT(*) FROM smartphone_instagram_comments WHERE post_id = p.id) AS comments_count,
+            (SELECT COUNT(*) FROM smartphone_instagram_likes WHERE post_id = p.id AND profile_id = ?) AS is_liked
+        FROM smartphone_instagram_posts p
+        JOIN smartphone_instagram_profiles pr ON pr.id = p.profile_id
+        ORDER BY p.id DESC LIMIT 50
+    `, [profile.id]);
+    return { ok: true, posts: posts || [], myProfileId: profile.id };
+});
+
+registerHandler('ig_post', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { caption, image } = args;
+    if (!caption && !image) return { error: 'Post vazio' };
+    const postId = await dbInsert(
+        'INSERT INTO smartphone_instagram_posts (profile_id, image, caption) VALUES (?, ?, ?)',
+        [profile.id, image || '', caption || '']
+    );
+    return { ok: true, postId };
+});
+
+registerHandler('ig_like', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { postId } = args;
+    const existing = await dbSingle('SELECT 1 FROM smartphone_instagram_likes WHERE profile_id = ? AND post_id = ?', [profile.id, postId]);
+    if (existing) {
+        await dbUpdate('DELETE FROM smartphone_instagram_likes WHERE profile_id = ? AND post_id = ?', [profile.id, postId]);
+        return { ok: true, liked: false };
+    }
+    await dbInsert('INSERT INTO smartphone_instagram_likes (profile_id, post_id) VALUES (?, ?)', [profile.id, postId]);
+
+    // Push notification
+    const post = await dbSingle('SELECT profile_id FROM smartphone_instagram_posts WHERE id = ?', [postId]);
+    if (post && post.profile_id !== profile.id) {
+        const ownerPhone = await dbScalar('SELECT p.phone_number FROM smartphone_profiles p JOIN smartphone_instagram_profiles ip ON ip.user_id = CAST(p.phone_number AS UNSIGNED) WHERE ip.id = ?', [post.profile_id]);
+        // Simplified: try to notify
+        const ownerProfile = await dbSingle('SELECT user_id FROM smartphone_instagram_profiles WHERE id = ?', [post.profile_id]);
+        if (ownerProfile) {
+            const ownerSource = getSourceByUserId(ownerProfile.user_id);
+            if (ownerSource) {
+                pushToPlayer(ownerSource, 'IG_NOTIFICATION', { type: 'like', from: profile.username, postId });
+            }
+        }
+    }
+    return { ok: true, liked: true };
+});
+
+registerHandler('ig_comment', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { postId, text } = args;
+    if (!text?.trim()) return { error: 'Comentário vazio' };
+    const commentId = await dbInsert(
+        'INSERT INTO smartphone_instagram_comments (post_id, profile_id, text) VALUES (?, ?, ?)',
+        [postId, profile.id, text.trim()]
+    );
+    return { ok: true, comment: { id: commentId, text: text.trim(), username: profile.username, name: profile.name, created_at: new Date().toISOString() } };
+});
+
+registerHandler('ig_comments', async (source, args) => {
+    const { postId } = args;
+    const comments = await dbQuery(`
+        SELECT c.id, c.text, c.created_at, pr.username, pr.name, pr.avatar, pr.id AS profile_id
+        FROM smartphone_instagram_comments c
+        JOIN smartphone_instagram_profiles pr ON pr.id = c.profile_id
+        WHERE c.post_id = ? ORDER BY c.id ASC
+    `, [postId]);
+    return { ok: true, comments: comments || [] };
+});
+
+registerHandler('ig_follow', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { profileId } = args;
+    if (profileId === profile.id) return { error: 'Não pode seguir a si mesmo' };
+    const existing = await dbSingle('SELECT 1 FROM smartphone_instagram_follows WHERE follower_id = ? AND following_id = ?', [profile.id, profileId]);
+    if (existing) {
+        await dbUpdate('DELETE FROM smartphone_instagram_follows WHERE follower_id = ? AND following_id = ?', [profile.id, profileId]);
+        return { ok: true, following: false };
+    }
+    await dbInsert('INSERT INTO smartphone_instagram_follows (follower_id, following_id) VALUES (?, ?)', [profile.id, profileId]);
+    return { ok: true, following: true };
+});
+
+registerHandler('ig_stories', async (source) => {
+    const profile = await getIgProfile(source);
+    const stories = await dbQuery(`
+        SELECT s.id, s.image, s.created_at, s.expires_at, pr.username, pr.avatar, pr.id AS profile_id
+        FROM smartphone_instagram_stories s
+        JOIN smartphone_instagram_profiles pr ON pr.id = s.profile_id
+        WHERE s.expires_at > NOW() AND (
+            s.profile_id IN (SELECT following_id FROM smartphone_instagram_follows WHERE follower_id = ?)
+            OR s.profile_id = ?
+        )
+        ORDER BY s.created_at DESC
+    `, [profile.id, profile.id]);
+    return { ok: true, stories: stories || [] };
+});
+
+registerHandler('ig_story_post', async (source, args) => {
+    const profile = await getIgProfile(source);
+    const { image } = args;
+    if (!image) return { error: 'Imagem obrigatória' };
+    const id = await dbInsert(
+        'INSERT INTO smartphone_instagram_stories (profile_id, image, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))',
+        [profile.id, image]
+    );
+    return { ok: true, storyId: id };
+});
+
+registerHandler('ig_delete_post', async (source, args) => {
+    const profile = await getIgProfile(source);
+    await dbUpdate('DELETE FROM smartphone_instagram_posts WHERE id = ? AND profile_id = ?', [args.postId, profile.id]);
+    return { ok: true };
+});
+
+registerHandler('ig_search', async (source, args) => {
+    const { query } = args;
+    if (!query?.trim()) return { ok: true, results: [] };
+    const results = await dbQuery(
+        "SELECT id, username, name, avatar FROM smartphone_instagram_profiles WHERE username LIKE ? OR name LIKE ? LIMIT 20",
+        [`%${query}%`, `%${query}%`]
+    );
+    return { ok: true, results: results || [] };
+});
+
+// ============================================
+// HANDLERS: Twitter
+// ============================================
+
+async function getTwitterProfile(source) {
+    const userId = await getUserIdCached(source);
+    const phone = await getPhoneFromSource(source);
+    let profile = await dbSingle('SELECT * FROM smartphone_twitter_profiles WHERE user_id = ?', [userId]);
+    if (!profile) {
+        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const username = phone.replace(/[^0-9]/g, '');
+        const id = await dbInsert(
+            'INSERT INTO smartphone_twitter_profiles (user_id, username, display_name) VALUES (?, ?, ?)',
+            [userId, username, name]
+        );
+        profile = { id, user_id: parseInt(userId), username, display_name: name, bio: '', avatar: null, verified: 0 };
+    }
+    return profile;
+}
+
+registerHandler('tw_profile', async (source, args) => {
+    if (args?.profileId) {
+        const profile = await dbSingle('SELECT * FROM smartphone_twitter_profiles WHERE id = ?', [args.profileId]);
+        if (!profile) return { error: 'Perfil não encontrado' };
+        const tweets = await dbQuery(
+            'SELECT t.*, (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id) AS likes_count FROM smartphone_twitter_tweets t WHERE profile_id = ? ORDER BY id DESC LIMIT 50',
+            [args.profileId]
+        );
+        const myProfile = await getTwitterProfile(source);
+        return { ok: true, profile, tweets: tweets || [], myProfileId: myProfile.id };
+    }
+    const profile = await getTwitterProfile(source);
+    const tweets = await dbQuery(
+        'SELECT t.*, (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id) AS likes_count FROM smartphone_twitter_tweets t WHERE profile_id = ? ORDER BY id DESC LIMIT 50',
+        [profile.id]
+    );
+    return { ok: true, profile, tweets: tweets || [], myProfileId: profile.id };
+});
+
+registerHandler('tw_profile_update', async (source, args) => {
+    const profile = await getTwitterProfile(source);
+    const { bio, display_name } = args;
+    const updates = [];
+    const params = [];
+    if (bio !== undefined) { updates.push('bio = ?'); params.push(bio); }
+    if (display_name !== undefined) { updates.push('display_name = ?'); params.push(display_name); }
+    if (updates.length > 0) {
+        params.push(profile.id);
+        await dbUpdate(`UPDATE smartphone_twitter_profiles SET ${updates.join(', ')} WHERE id = ?`, params);
+    }
+    return { ok: true };
+});
+
+registerHandler('tw_feed', async (source) => {
+    const profile = await getTwitterProfile(source);
+    const tweets = await dbQuery(`
+        SELECT t.id, t.content, t.image, t.created_at, t.profile_id,
+            pr.username, pr.display_name, pr.avatar, pr.verified,
+            (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id) AS likes_count,
+            (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id AND profile_id = ?) AS is_liked
+        FROM smartphone_twitter_tweets t
+        JOIN smartphone_twitter_profiles pr ON pr.id = t.profile_id
+        ORDER BY t.id DESC LIMIT 50
+    `, [profile.id]);
+    return { ok: true, tweets: tweets || [], myProfileId: profile.id };
+});
+
+registerHandler('tw_tweet', async (source, args) => {
+    const profile = await getTwitterProfile(source);
+    const { content, image } = args;
+    if (!content?.trim()) return { error: 'Tweet vazio' };
+    if (content.length > 280) return { error: 'Máximo 280 caracteres' };
+    const tweetId = await dbInsert(
+        'INSERT INTO smartphone_twitter_tweets (profile_id, content, image) VALUES (?, ?, ?)',
+        [profile.id, content.trim(), image || null]
+    );
+    return { ok: true, tweet: { id: tweetId, content: content.trim(), image, profile_id: profile.id, username: profile.username, display_name: profile.display_name, avatar: profile.avatar, verified: profile.verified, likes_count: 0, is_liked: 0, created_at: new Date().toISOString() } };
+});
+
+registerHandler('tw_like', async (source, args) => {
+    const profile = await getTwitterProfile(source);
+    const { tweetId } = args;
+    const existing = await dbSingle('SELECT 1 FROM smartphone_twitter_likes WHERE profile_id = ? AND tweet_id = ?', [profile.id, tweetId]);
+    if (existing) {
+        await dbUpdate('DELETE FROM smartphone_twitter_likes WHERE profile_id = ? AND tweet_id = ?', [profile.id, tweetId]);
+        return { ok: true, liked: false };
+    }
+    await dbInsert('INSERT INTO smartphone_twitter_likes (profile_id, tweet_id) VALUES (?, ?)', [profile.id, tweetId]);
+    return { ok: true, liked: true };
+});
+
+registerHandler('tw_delete', async (source, args) => {
+    const profile = await getTwitterProfile(source);
+    await dbUpdate('DELETE FROM smartphone_twitter_tweets WHERE id = ? AND profile_id = ?', [args.tweetId, profile.id]);
+    return { ok: true };
+});
+
+registerHandler('tw_search', async (source, args) => {
+    const profile = await getTwitterProfile(source);
+    const { query } = args;
+    if (!query?.trim()) return { ok: true, tweets: [] };
+    const tweets = await dbQuery(`
+        SELECT t.id, t.content, t.image, t.created_at, t.profile_id,
+            pr.username, pr.display_name, pr.avatar, pr.verified,
+            (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id) AS likes_count,
+            (SELECT COUNT(*) FROM smartphone_twitter_likes WHERE tweet_id = t.id AND profile_id = ?) AS is_liked
+        FROM smartphone_twitter_tweets t
+        JOIN smartphone_twitter_profiles pr ON pr.id = t.profile_id
+        WHERE t.content LIKE ?
+        ORDER BY t.id DESC LIMIT 30
+    `, [profile.id, `%${query}%`]);
+    return { ok: true, tweets: tweets || [] };
+});
+
+// ============================================
+// HANDLERS: TikTok
+// ============================================
+
+async function getTikTokProfile(source) {
+    const phone = await getPhoneFromSource(source);
+    let profile = await dbSingle('SELECT * FROM smartphone_tiktok_profiles WHERE phone = ?', [phone]);
+    if (!profile) {
+        const name = await dbScalar("SELECT name FROM smartphone_profiles WHERE phone_number = ?", [phone]) || 'Jogador';
+        const username = phone.replace(/[^0-9]/g, '');
+        const id = await dbInsert(
+            'INSERT INTO smartphone_tiktok_profiles (phone, username, display_name) VALUES (?, ?, ?)',
+            [phone, username, name]
+        );
+        profile = { id, phone, username, display_name: name, bio: '', avatar: null, followers_count: 0, following_count: 0, likes_count: 0 };
+    }
+    return profile;
+}
+
+registerHandler('tiktok_profile', async (source, args) => {
+    if (args?.profileId) {
+        const profile = await dbSingle('SELECT * FROM smartphone_tiktok_profiles WHERE id = ?', [args.profileId]);
+        if (!profile) return { error: 'Perfil não encontrado' };
+        const videos = await dbQuery('SELECT * FROM smartphone_tiktok_videos WHERE profile_id = ? ORDER BY id DESC', [args.profileId]);
+        const myProfile = await getTikTokProfile(source);
+        const isFollowing = await dbScalar('SELECT COUNT(*) FROM smartphone_tiktok_follows WHERE follower_id = ? AND following_id = ?', [myProfile.id, args.profileId]);
+        return { ok: true, profile, videos: videos || [], isFollowing: isFollowing > 0, myProfileId: myProfile.id };
+    }
+    const profile = await getTikTokProfile(source);
+    const videos = await dbQuery('SELECT * FROM smartphone_tiktok_videos WHERE profile_id = ? ORDER BY id DESC', [profile.id]);
+    return { ok: true, profile, videos: videos || [], myProfileId: profile.id };
+});
+
+registerHandler('tiktok_feed', async (source) => {
+    const profile = await getTikTokProfile(source);
+    const videos = await dbQuery(`
+        SELECT v.id, v.caption, v.thumbnail, v.likes_count, v.comments_count, v.views_count, v.created_at, v.profile_id,
+            pr.username, pr.display_name, pr.avatar,
+            (SELECT COUNT(*) FROM smartphone_tiktok_likes WHERE video_id = v.id AND profile_id = ?) AS is_liked
+        FROM smartphone_tiktok_videos v
+        JOIN smartphone_tiktok_profiles pr ON pr.id = v.profile_id
+        ORDER BY v.id DESC LIMIT 30
+    `, [profile.id]);
+    return { ok: true, videos: videos || [], myProfileId: profile.id };
+});
+
+registerHandler('tiktok_post', async (source, args) => {
+    const profile = await getTikTokProfile(source);
+    const { caption } = args;
+    if (!caption?.trim()) return { error: 'Legenda obrigatória' };
+    const videoId = await dbInsert(
+        'INSERT INTO smartphone_tiktok_videos (profile_id, caption) VALUES (?, ?)',
+        [profile.id, caption.trim()]
+    );
+    return { ok: true, video: { id: videoId, caption: caption.trim(), profile_id: profile.id, username: profile.username, display_name: profile.display_name, likes_count: 0, comments_count: 0, views_count: 0, created_at: new Date().toISOString() } };
+});
+
+registerHandler('tiktok_like', async (source, args) => {
+    const profile = await getTikTokProfile(source);
+    const { videoId } = args;
+    const existing = await dbSingle('SELECT 1 FROM smartphone_tiktok_likes WHERE profile_id = ? AND video_id = ?', [profile.id, videoId]);
+    if (existing) {
+        await dbUpdate('DELETE FROM smartphone_tiktok_likes WHERE profile_id = ? AND video_id = ?', [profile.id, videoId]);
+        await dbUpdate('UPDATE smartphone_tiktok_videos SET likes_count = GREATEST(likes_count - 1, 0) WHERE id = ?', [videoId]);
+        return { ok: true, liked: false };
+    }
+    await dbInsert('INSERT INTO smartphone_tiktok_likes (profile_id, video_id) VALUES (?, ?)', [profile.id, videoId]);
+    await dbUpdate('UPDATE smartphone_tiktok_videos SET likes_count = likes_count + 1 WHERE id = ?', [videoId]);
+    return { ok: true, liked: true };
+});
+
+registerHandler('tiktok_comments', async (source, args) => {
+    const { videoId } = args;
+    const comments = await dbQuery(`
+        SELECT c.id, c.comment, c.created_at, pr.username, pr.display_name, pr.avatar, pr.id AS profile_id
+        FROM smartphone_tiktok_comments c
+        JOIN smartphone_tiktok_profiles pr ON pr.id = c.profile_id
+        WHERE c.video_id = ? ORDER BY c.id DESC LIMIT 50
+    `, [videoId]);
+    return { ok: true, comments: comments || [] };
+});
+
+registerHandler('tiktok_comment', async (source, args) => {
+    const profile = await getTikTokProfile(source);
+    const { videoId, comment } = args;
+    if (!comment?.trim()) return { error: 'Comentário vazio' };
+    const id = await dbInsert(
+        'INSERT INTO smartphone_tiktok_comments (video_id, profile_id, comment) VALUES (?, ?, ?)',
+        [videoId, profile.id, comment.trim()]
+    );
+    await dbUpdate('UPDATE smartphone_tiktok_videos SET comments_count = comments_count + 1 WHERE id = ?', [videoId]);
+    return { ok: true, comment: { id, comment: comment.trim(), username: profile.username, display_name: profile.display_name, created_at: new Date().toISOString() } };
+});
+
+registerHandler('tiktok_follow', async (source, args) => {
+    const profile = await getTikTokProfile(source);
+    const { profileId } = args;
+    if (profileId === profile.id) return { error: 'Não pode seguir a si mesmo' };
+    const existing = await dbSingle('SELECT 1 FROM smartphone_tiktok_follows WHERE follower_id = ? AND following_id = ?', [profile.id, profileId]);
+    if (existing) {
+        await dbUpdate('DELETE FROM smartphone_tiktok_follows WHERE follower_id = ? AND following_id = ?', [profile.id, profileId]);
+        await dbUpdate('UPDATE smartphone_tiktok_profiles SET followers_count = GREATEST(followers_count - 1, 0) WHERE id = ?', [profileId]);
+        await dbUpdate('UPDATE smartphone_tiktok_profiles SET following_count = GREATEST(following_count - 1, 0) WHERE id = ?', [profile.id]);
+        return { ok: true, following: false };
+    }
+    await dbInsert('INSERT INTO smartphone_tiktok_follows (follower_id, following_id) VALUES (?, ?)', [profile.id, profileId]);
+    await dbUpdate('UPDATE smartphone_tiktok_profiles SET followers_count = followers_count + 1 WHERE id = ?', [profileId]);
+    await dbUpdate('UPDATE smartphone_tiktok_profiles SET following_count = following_count + 1 WHERE id = ?', [profile.id]);
+    return { ok: true, following: true };
+});
+
+registerHandler('tiktok_delete', async (source, args) => {
+    const profile = await getTikTokProfile(source);
+    await dbUpdate('DELETE FROM smartphone_tiktok_videos WHERE id = ? AND profile_id = ?', [args.videoId, profile.id]);
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: Tinder
+// ============================================
+
+async function getTinderProfile(source) {
+    const phone = await getPhoneFromSource(source);
+    let profile = await dbSingle('SELECT * FROM smartphone_tinder_profiles WHERE phone = ?', [phone]);
+    return profile;
+}
+
+registerHandler('tinder_profile', async (source) => {
+    const profile = await getTinderProfile(source);
+    return { ok: true, profile };
+});
+
+registerHandler('tinder_setup', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    const { name, age, bio, photos, gender, interest } = args;
+    if (!name || !age) return { error: 'Nome e idade obrigatórios' };
+
+    const existing = await dbSingle('SELECT id FROM smartphone_tinder_profiles WHERE phone = ?', [phone]);
+    if (existing) {
+        await dbUpdate(
+            'UPDATE smartphone_tinder_profiles SET name = ?, age = ?, bio = ?, photos = ?, gender = ?, interest = ? WHERE id = ?',
+            [name, age, bio || '', photos || '[]', gender || 'male', interest || 'female', existing.id]
+        );
+        return { ok: true, profileId: existing.id };
+    }
+    const id = await dbInsert(
+        'INSERT INTO smartphone_tinder_profiles (phone, name, age, bio, photos, gender, interest) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [phone, name, age, bio || '', photos || '[]', gender || 'male', interest || 'female']
+    );
+    return { ok: true, profileId: id };
+});
+
+registerHandler('tinder_discover', async (source) => {
+    const profile = await getTinderProfile(source);
+    if (!profile) return { error: 'Configure seu perfil primeiro' };
+
+    const profiles = await dbQuery(`
+        SELECT * FROM smartphone_tinder_profiles
+        WHERE id != ?
+        AND gender = ?
+        AND id NOT IN (SELECT swiped_id FROM smartphone_tinder_swipes WHERE swiper_id = ?)
+        ORDER BY RAND() LIMIT 10
+    `, [profile.id, profile.interest, profile.id]);
+    return { ok: true, profiles: profiles || [] };
+});
+
+registerHandler('tinder_swipe', async (source, args) => {
+    const profile = await getTinderProfile(source);
+    if (!profile) return { error: 'Configure seu perfil primeiro' };
+    const { targetId, direction } = args;
+
+    await dbInsert(
+        'INSERT INTO smartphone_tinder_swipes (swiper_id, swiped_id, direction) VALUES (?, ?, ?)',
+        [profile.id, targetId, direction]
+    );
+
+    // Check match
+    if (direction === 'right') {
+        const mutual = await dbSingle(
+            "SELECT 1 FROM smartphone_tinder_swipes WHERE swiper_id = ? AND swiped_id = ? AND direction = 'right'",
+            [targetId, profile.id]
+        );
+        if (mutual) {
+            const matchId = await dbInsert(
+                'INSERT INTO smartphone_tinder_matches (profile1_id, profile2_id) VALUES (?, ?)',
+                [Math.min(profile.id, targetId), Math.max(profile.id, targetId)]
+            );
+            const matchedProfile = await dbSingle('SELECT * FROM smartphone_tinder_profiles WHERE id = ?', [targetId]);
+
+            // Push notification
+            const matchedPhone = matchedProfile?.phone;
+            if (matchedPhone) {
+                const targetSource = getSourceByPhone(matchedPhone);
+                if (targetSource) {
+                    pushToPlayer(targetSource, 'TINDER_MATCH', { matchId, profile: { id: profile.id, name: profile.name, photos: profile.photos } });
+                }
+            }
+            return { ok: true, match: true, matchId, matchedProfile };
+        }
+    }
+    return { ok: true, match: false };
+});
+
+registerHandler('tinder_matches', async (source) => {
+    const profile = await getTinderProfile(source);
+    if (!profile) return { ok: true, matches: [] };
+
+    const matches = await dbQuery(`
+        SELECT m.id AS match_id, m.created_at,
+            CASE WHEN m.profile1_id = ? THEN m.profile2_id ELSE m.profile1_id END AS other_id
+        FROM smartphone_tinder_matches m
+        WHERE m.profile1_id = ? OR m.profile2_id = ?
+        ORDER BY m.created_at DESC
+    `, [profile.id, profile.id, profile.id]);
+
+    const resolved = [];
+    for (const m of (matches || [])) {
+        const other = await dbSingle('SELECT id, name, age, photos FROM smartphone_tinder_profiles WHERE id = ?', [m.other_id]);
+        const lastMsg = await dbSingle(
+            'SELECT message, created_at FROM smartphone_tinder_messages WHERE match_id = ? ORDER BY id DESC LIMIT 1',
+            [m.match_id]
+        );
+        resolved.push({ ...m, other, lastMessage: lastMsg?.message, lastMessageAt: lastMsg?.created_at });
+    }
+    return { ok: true, matches: resolved };
+});
+
+registerHandler('tinder_messages', async (source, args) => {
+    const profile = await getTinderProfile(source);
+    const { matchId } = args;
+    const messages = await dbQuery(`
+        SELECT m.id, m.sender_id, m.message, m.created_at
+        FROM smartphone_tinder_messages m
+        WHERE m.match_id = ? ORDER BY m.id ASC LIMIT 100
+    `, [matchId]);
+    return { ok: true, messages: messages || [], myProfileId: profile?.id };
+});
+
+registerHandler('tinder_send', async (source, args) => {
+    const profile = await getTinderProfile(source);
+    if (!profile) return { error: 'Configure seu perfil' };
+    const { matchId, message } = args;
+    if (!message?.trim()) return { error: 'Mensagem vazia' };
+
+    const msgId = await dbInsert(
+        'INSERT INTO smartphone_tinder_messages (match_id, sender_id, message) VALUES (?, ?, ?)',
+        [matchId, profile.id, message.trim()]
+    );
+
+    // Push
+    const match = await dbSingle('SELECT profile1_id, profile2_id FROM smartphone_tinder_matches WHERE id = ?', [matchId]);
+    if (match) {
+        const otherId = match.profile1_id === profile.id ? match.profile2_id : match.profile1_id;
+        const otherProfile = await dbSingle('SELECT phone FROM smartphone_tinder_profiles WHERE id = ?', [otherId]);
+        if (otherProfile?.phone) {
+            const targetSource = getSourceByPhone(otherProfile.phone);
+            if (targetSource) {
+                pushToPlayer(targetSource, 'TINDER_MESSAGE', { matchId, message: { id: msgId, sender_id: profile.id, message: message.trim(), created_at: new Date().toISOString() }, senderName: profile.name });
+            }
+        }
+    }
+
+    return { ok: true, message: { id: msgId, sender_id: profile.id, message: message.trim(), created_at: new Date().toISOString() } };
+});
+
+// ============================================
+// HANDLERS: Marketplace
+// ============================================
+
+registerHandler('market_listings', async (source, args) => {
+    const { category, search } = args || {};
+    let sql = `
+        SELECT m.*, pr.name AS seller_name
+        FROM smartphone_marketplace m
+        LEFT JOIN smartphone_profiles pr ON pr.phone_number = m.seller_phone
+        WHERE m.status = 'active'
+    `;
+    const params = [];
+    if (category) { sql += ' AND m.category = ?'; params.push(category); }
+    if (search) { sql += ' AND (m.title LIKE ? OR m.description LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
+    sql += ' ORDER BY m.id DESC LIMIT 50';
+    const listings = await dbQuery(sql, params);
+    return { ok: true, listings: listings || [] };
+});
+
+registerHandler('market_my_listings', async (source) => {
+    const phone = await getPhoneFromSource(source);
+    const listings = await dbQuery(
+        "SELECT * FROM smartphone_marketplace WHERE seller_phone = ? ORDER BY id DESC",
+        [phone]
+    );
+    return { ok: true, listings: listings || [] };
+});
+
+registerHandler('market_create', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    const { title, description, price, category, image } = args;
+    if (!title?.trim()) return { error: 'Título obrigatório' };
+    if (!price || price <= 0) return { error: 'Preço inválido' };
+
+    const id = await dbInsert(
+        "INSERT INTO smartphone_marketplace (seller_phone, title, description, price, category, image, status) VALUES (?, ?, ?, ?, ?, ?, 'active')",
+        [phone, title.trim(), description || '', price, category || 'geral', image || null]
+    );
+    return { ok: true, listingId: id };
+});
+
+registerHandler('market_buy', async (source, args) => {
+    const buyerPhone = await getPhoneFromSource(source);
+    const buyerId = await getUserIdCached(source);
+    const { listingId } = args;
+
+    const listing = await dbSingle("SELECT * FROM smartphone_marketplace WHERE id = ? AND status = 'active'", [listingId]);
+    if (!listing) return { error: 'Anúncio indisponível' };
+    if (listing.seller_phone === buyerPhone) return { error: 'Não pode comprar próprio anúncio' };
+
+    // Verificar saldo
+    let balance = 0;
+    try {
+        if (typeof exports.vrp?.getMoney === 'function') balance = exports.vrp.getMoney(parseInt(buyerId)) || 0;
+        else if (typeof exports.vrp?.getBankMoney === 'function') balance = exports.vrp.getBankMoney(parseInt(buyerId)) || 0;
+    } catch (e) { balance = 0; }
+
+    if (balance < listing.price) return { error: 'Saldo insuficiente' };
+
+    // Transferir dinheiro
+    const sellerId = phoneToUserId(listing.seller_phone);
+    try {
+        if (typeof exports.vrp?.removeMoney === 'function') exports.vrp.removeMoney(parseInt(buyerId), listing.price);
+        else if (typeof exports.vrp?.removeBankMoney === 'function') exports.vrp.removeBankMoney(parseInt(buyerId), listing.price);
+        if (typeof exports.vrp?.addMoney === 'function') exports.vrp.addMoney(parseInt(sellerId), listing.price);
+        else if (typeof exports.vrp?.addBankMoney === 'function') exports.vrp.addBankMoney(parseInt(sellerId), listing.price);
+    } catch (e) { return { error: 'Erro ao processar pagamento' }; }
+
+    // Marcar como vendido
+    await dbUpdate("UPDATE smartphone_marketplace SET status = 'sold', buyer_phone = ? WHERE id = ?", [buyerPhone, listingId]);
+
+    // Registrar transação
+    await dbInsert(
+        "INSERT INTO smartphone_bank_transactions (from_phone, to_phone, amount, type, description) VALUES (?, ?, ?, 'transfer', ?)",
+        [buyerPhone, listing.seller_phone, listing.price, `Marketplace: ${listing.title}`]
+    );
+
+    // Push pro vendedor
+    const sellerSource = getSourceByPhone(listing.seller_phone);
+    if (sellerSource) {
+        pushToPlayer(sellerSource, 'MARKET_SOLD', { listingId, title: listing.title, price: listing.price, buyerPhone });
+    }
+
+    return { ok: true };
+});
+
+registerHandler('market_delete', async (source, args) => {
+    const phone = await getPhoneFromSource(source);
+    await dbUpdate("DELETE FROM smartphone_marketplace WHERE id = ? AND seller_phone = ?", [args.listingId, phone]);
+    return { ok: true };
+});
+
+registerHandler('market_contact', async (source, args) => {
+    // Retornar telefone do vendedor pra iniciar SMS/WhatsApp
+    const listing = await dbSingle('SELECT seller_phone FROM smartphone_marketplace WHERE id = ?', [args.listingId]);
+    if (!listing) return { error: 'Anúncio não encontrado' };
+    return { ok: true, phone: listing.seller_phone };
+});
+
+// CALLS: InCalls map (inspirado no Z-Phone)
+// ============================================
+
+const activeCalls = {}; // callId → { callerPhone, callerSource, receiverPhone, receiverSource, accepted, startTime }
+let callIdCounter = 0;
+
+function generateCallId() {
+    return ++callIdCounter;
+}
+
+function getActiveCallByPhone(phone) {
+    for (const [id, call] of Object.entries(activeCalls)) {
+        if (call.callerPhone === phone || call.receiverPhone === phone) {
+            return { id: parseInt(id), ...call };
+        }
+    }
+    return null;
+}
+
+function isPhoneInCall(phone) {
+    return !!getActiveCallByPhone(phone);
+}
+
+// ============================================
+// HANDLERS: Calls
+// ============================================
+
+registerHandler('call_init', async (source, args) => {
+    const callerPhone = await getPhoneFromSource(source);
+    const { phone: receiverPhone, anonymous } = args;
+
+    if (!receiverPhone) return { error: 'Número obrigatório' };
+    if (receiverPhone === callerPhone) return { error: 'Não pode ligar pra si mesmo' };
+
+    // Verifica se caller já está em chamada
+    if (isPhoneInCall(callerPhone)) return { error: 'Você já está em uma chamada' };
+
+    // Verifica se receiver existe
+    const receiverProfile = await dbSingle(
+        'SELECT phone_number FROM smartphone_profiles WHERE phone_number = ?',
+        [receiverPhone]
+    );
+    if (!receiverProfile) return { error: 'Número não encontrado', unavailable: true };
+
+    // Verifica se receiver está online
+    const receiverSource = getSourceByPhone(receiverPhone);
+    if (!receiverSource) return { error: 'Pessoa indisponível', unavailable: true };
+
+    // Verifica se receiver já está em chamada
+    if (isPhoneInCall(receiverPhone)) return { error: 'Pessoa está em outra chamada', busy: true };
+
+    // Verifica se está bloqueado
+    const receiverUserId = phoneToUserId(receiverPhone);
+    const callerUserId = phoneToUserId(callerPhone);
+    const isBlocked = await dbSingle(
+        'SELECT 1 FROM smartphone_blocked WHERE user_id = ? AND blocked_phone = ?',
+        [receiverUserId, callerPhone]
+    );
+    if (isBlocked) return { error: 'Pessoa indisponível', unavailable: true };
+
+    // Criar chamada
+    const callId = generateCallId();
+    activeCalls[callId] = {
+        callerPhone,
+        callerSource: source,
+        receiverPhone,
+        receiverSource,
+        accepted: false,
+        anonymous: !!anonymous,
+        startTime: Date.now(),
+    };
+
+    // Salvar no DB
+    await dbInsert(
+        'INSERT INTO smartphone_calls (caller_phone, receiver_phone, status, is_anonymous) VALUES (?, ?, ?, ?)',
+        [callerPhone, receiverPhone, 'missed', anonymous ? 1 : 0]
+    );
+
+    // Resolver nome do contato pra quem recebe
+    const callerContact = await dbSingle(
+        'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+        [receiverUserId, callerPhone]
+    );
+
+    // Push pro receiver: chamada recebida
+    pushToPlayer(receiverSource, 'CALL_INCOMING', {
+        callId,
+        callerPhone: anonymous ? 'Anônimo' : callerPhone,
+        callerName: anonymous ? 'Número Oculto' : (callerContact?.contact_name || callerPhone),
+    });
+
+    return {
+        ok: true,
+        callId,
+        receiverPhone,
+        status: 'ringing',
+    };
+});
+
+registerHandler('call_accept', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { callId } = args;
+
+    const call = activeCalls[callId];
+    if (!call) return { error: 'Chamada não encontrada' };
+    if (call.receiverPhone !== myPhone) return { error: 'Chamada não é para você' };
+
+    call.accepted = true;
+    call.acceptedAt = Date.now();
+
+    // Atualizar DB
+    await dbUpdate(
+        'UPDATE smartphone_calls SET status = ? WHERE caller_phone = ? AND receiver_phone = ? ORDER BY id DESC LIMIT 1',
+        ['answered', call.callerPhone, call.receiverPhone]
+    );
+
+    // Push pro caller: chamada aceita
+    pushToPlayer(call.callerSource, 'CALL_ACCEPTED', {
+        callId,
+        receiverPhone: call.receiverPhone,
+    });
+
+    // Push pro receiver: confirmar
+    pushToPlayer(call.receiverSource, 'CALL_ACCEPTED', {
+        callId,
+        callerPhone: call.callerPhone,
+    });
+
+    return { ok: true, callId };
+});
+
+registerHandler('call_reject', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { callId } = args;
+
+    const call = activeCalls[callId];
+    if (!call) return { error: 'Chamada não encontrada' };
+
+    // Atualizar DB
+    await dbUpdate(
+        'UPDATE smartphone_calls SET status = ? WHERE caller_phone = ? AND receiver_phone = ? ORDER BY id DESC LIMIT 1',
+        ['rejected', call.callerPhone, call.receiverPhone]
+    );
+
+    // Push pro caller
+    pushToPlayer(call.callerSource, 'CALL_REJECTED', { callId });
+
+    // Limpar
+    delete activeCalls[callId];
+
+    return { ok: true };
+});
+
+registerHandler('call_end', async (source, args) => {
+    const myPhone = await getPhoneFromSource(source);
+    const { callId } = args;
+
+    const call = activeCalls[callId];
+    if (!call) return { error: 'Chamada não encontrada' };
+
+    // Calcular duração
+    const duration = call.acceptedAt ? Math.floor((Date.now() - call.acceptedAt) / 1000) : 0;
+
+    // Atualizar DB com duração
+    if (duration > 0) {
+        await dbUpdate(
+            'UPDATE smartphone_calls SET duration = ? WHERE caller_phone = ? AND receiver_phone = ? ORDER BY id DESC LIMIT 1',
+            [duration, call.callerPhone, call.receiverPhone]
+        );
+    }
+
+    // Push pra ambos
+    const otherSource = myPhone === call.callerPhone ? call.receiverSource : call.callerSource;
+    pushToPlayer(otherSource, 'CALL_ENDED', { callId, duration });
+
+    // Limpar
+    delete activeCalls[callId];
+
+    return { ok: true, duration };
+});
+
+registerHandler('call_cancel', async (source, args) => {
+    // Caller cancela antes de atender (ring ring... desistiu)
+    const myPhone = await getPhoneFromSource(source);
+    const { callId } = args;
+
+    const call = activeCalls[callId];
+    if (!call) return { ok: true }; // Já cancelada
+
+    // Push pro receiver
+    if (call.receiverSource) {
+        pushToPlayer(call.receiverSource, 'CALL_CANCELLED', { callId });
+    }
+
+    delete activeCalls[callId];
+    return { ok: true };
+});
+
+registerHandler('call_history', async (source) => {
+    const myPhone = await getPhoneFromSource(source);
+    const userId = await getUserIdCached(source);
+
+    const calls = await dbQuery(`
+        SELECT c.*, 
+            CASE 
+                WHEN c.caller_phone = ? THEN c.receiver_phone
+                ELSE c.caller_phone
+            END AS other_phone,
+            CASE 
+                WHEN c.caller_phone = ? THEN 'outgoing'
+                ELSE 'incoming'
+            END AS direction
+        FROM smartphone_calls c
+        WHERE c.caller_phone = ? OR c.receiver_phone = ?
+        ORDER BY c.created_at DESC
+        LIMIT 50
+    `, [myPhone, myPhone, myPhone, myPhone]);
+
+    // Resolver nomes dos contatos
+    const resolved = [];
+    for (const call of (calls || [])) {
+        const contact = await dbSingle(
+            'SELECT contact_name FROM smartphone_contacts WHERE user_id = ? AND contact_phone = ?',
+            [userId, call.other_phone]
+        );
+        resolved.push({
+            ...call,
+            other_name: (call.is_anonymous && call.direction === 'incoming') ? 'Número Oculto' : (contact?.contact_name || null),
+        });
+    }
+
+    return { ok: true, calls: resolved };
+});
+
+// Limpar chamadas de jogadores que desconectam
+on('playerDropped', () => {
+    const src = global.source;
+    for (const [id, call] of Object.entries(activeCalls)) {
+        if (call.callerSource === src || call.receiverSource === src) {
+            const otherSource = call.callerSource === src ? call.receiverSource : call.callerSource;
+            if (otherSource) {
+                pushToPlayer(otherSource, 'CALL_ENDED', { callId: parseInt(id), duration: 0, disconnected: true });
+            }
+            delete activeCalls[id];
+        }
+    }
+});
+
+// ============================================
+// EXPORTS
 // ============================================
 
 global.smartphoneServer = {
-    registerHandler,
-    pushToPlayer,
-    pushToAll,
-    dbQuery,
-    dbScalar,
-    dbInsert,
-    dbUpdate,
-    getUserId,
-    getPhoneFromSource,
-    userIdToPhone,
-    config
+    registerHandler, pushToPlayer, pushToAll,
+    dbQuery, dbScalar, dbInsert, dbUpdate, dbSingle,
+    getUserId, getUserIdCached, getPhoneFromSource, getSourceByPhone,
+    userIdToPhone, phoneToUserId, ensureProfile, config
 };
 
 // ============================================
@@ -306,11 +2017,11 @@ setImmediate(async () => {
     try {
         await initDatabase();
         console.log('[SMARTPHONE] ================================');
-        console.log('[SMARTPHONE] Server iniciado com sucesso!');
-        console.log(`[SMARTPHONE] Handlers registrados: ${Object.keys(handlers).length}`);
-        console.log(`[SMARTPHONE] Item necessário: ${config.item}`);
+        console.log('[SMARTPHONE] Server v2.0 iniciado!');
+        console.log(`[SMARTPHONE] Handlers: ${Object.keys(handlers).length}`);
+        console.log('[SMARTPHONE] Rate limit: 250ms | Cache: ativo');
         console.log('[SMARTPHONE] ================================');
     } catch (error) {
-        console.error('[SMARTPHONE] ERRO NA INICIALIZAÇÃO:', error.message);
+        console.error('[SMARTPHONE] ERRO:', error.message);
     }
 });

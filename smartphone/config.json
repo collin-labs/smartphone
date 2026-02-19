@@ -1,5 +1,6 @@
 {
   "item": "celular",
+  "requireItem": false,
   "keybind": "M",
   "currency": "R$",
   "locale": "pt-BR",

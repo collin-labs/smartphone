@@ -23,5 +23,5 @@ files {
     'web/dist/index.html',
     'web/dist/**/*',
     'config.json',
-    'assets/**/*'
+    'smartphone.sql'
 }

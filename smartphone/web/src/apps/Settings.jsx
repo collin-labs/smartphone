@@ -1,16 +1,44 @@
+import { useEffect, useRef } from "react";
 import { WALLPAPERS } from "../components/data";
+import { fetchBackend } from "../hooks/useNui";
 
 export function SettingsApp({ settings, onSettingsChange }) {
+  const saveTimerRef = useRef(null);
+
+  // Debounced save to backend
+  const saveSettings = (newSettings) => {
+    onSettingsChange(newSettings);
+
+    // Debounce: salva 500ms após última mudança
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      fetchBackend('settings_save', newSettings);
+    }, 500);
+  };
+
+  // Cleanup timer on unmount (force save)
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        fetchBackend('settings_save', settings);
+      }
+    };
+  }, [settings]);
+
   const toggle = (key) => {
-    onSettingsChange({ ...settings, [key]: !settings[key] });
+    saveSettings({ ...settings, [key]: !settings[key] });
   };
 
   const setSlider = (key, value) => {
-    onSettingsChange({ ...settings, [key]: value });
+    saveSettings({ ...settings, [key]: value });
   };
 
   const setWallpaper = (idx) => {
-    onSettingsChange({ ...settings, wallpaper: idx });
+    saveSettings({ ...settings, wallpaper: idx });
+    // Também atualizar perfil (wallpaper é campo separado)
+    const wp = WALLPAPERS[idx];
+    if (wp) fetchBackend('profile_update', { wallpaper: wp.id });
   };
 
   return (
@@ -62,7 +90,7 @@ export function SettingsApp({ settings, onSettingsChange }) {
         </div>
       </div>
 
-      {/* Wallpaper section - REAL IMAGES */}
+      {/* Wallpaper section */}
       <div className="flex flex-col gap-3">
         <span className="px-1 text-[13px] font-semibold uppercase tracking-wider text-white/30">
           Papel de Parede
@@ -98,7 +126,7 @@ export function SettingsApp({ settings, onSettingsChange }) {
       <div className="flex flex-col gap-[1px] overflow-hidden rounded-xl">
         <div className="flex items-center justify-between bg-[#1c1c1e] p-4">
           <span className="text-[15px] text-white">Versão</span>
-          <span className="text-[15px] text-white/40">1.0.0</span>
+          <span className="text-[15px] text-white/40">2.0.0</span>
         </div>
         <div className="flex items-center justify-between bg-[#1c1c1e] p-4">
           <span className="text-[15px] text-white">Dispositivo</span>
