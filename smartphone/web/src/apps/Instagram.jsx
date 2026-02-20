@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
-import { fetchBackend } from '../hooks/useNui';
+import { fetchBackend, fetchClient } from '../hooks/useNui';
 import { usePusherEvent } from '../hooks/usePusher';
 
 // ============================================================
@@ -133,6 +133,7 @@ export default function Instagram({ onNavigate }) {
   const [activeStory, setActiveStory] = useState(0);
   const [storyProgress, setStoryProgress] = useState(0);
   const [profileTab, setProfileTab] = useState("grid");
+  const [storyData, setStoryData] = useState([]);
   const feedRef = useRef(null);
   const storyTimerRef = useRef(null);
 
@@ -140,8 +141,9 @@ export default function Instagram({ onNavigate }) {
   const loadFeed = useCallback(async () => { setLoading(true); const r = await fetchBackend('ig_feed'); if (r?.posts) setPosts(r.posts); if (r?.myProfileId) setMyProfileId(r.myProfileId); setLoading(false); }, []);
   const loadExplore = useCallback(async () => { setLoading(true); const r = await fetchBackend('ig_explore'); if (r?.posts) setPosts(r.posts); if (r?.myProfileId) setMyProfileId(r.myProfileId); setLoading(false); }, []);
   const loadMyProfile = useCallback(async () => { setLoading(true); const r = await fetchBackend('ig_profile'); if (r?.profile) setMyProfile(r.profile); if (r?.myProfileId) setMyProfileId(r.myProfileId); setLoading(false); }, []);
+  const loadStories = useCallback(async () => { const r = await fetchBackend('ig_stories'); if (r?.stories) setStoryData(r.stories); }, []);
 
-  useEffect(() => { if (tab === 'feed') loadFeed(); else if (tab === 'explore') loadExplore(); else if (tab === 'profile') loadMyProfile(); }, [tab, loadFeed, loadExplore, loadMyProfile]);
+  useEffect(() => { if (tab === 'feed') { loadFeed(); loadStories(); } else if (tab === 'explore') loadExplore(); else if (tab === 'profile') loadMyProfile(); }, [tab, loadFeed, loadExplore, loadMyProfile, loadStories]);
   usePusherEvent('IG_NOTIFICATION', useCallback(() => {}, []));
 
   const handleLike = async (id) => { const r = await fetchBackend('ig_like', { postId: id }); if (r?.ok) { setPosts(p => p.map(x => x.id === id ? { ...x, is_liked: r.liked ? 1 : 0, likes_count: x.likes_count + (r.liked ? 1 : -1) } : x)); if (r.liked) { setLikeAnim(id); setTimeout(() => setLikeAnim(null), 800); } } };
@@ -155,7 +157,18 @@ export default function Instagram({ onNavigate }) {
   const deletePost = async (postId) => { const r = await fetchBackend('ig_delete_post', { postId }); if (r?.ok) setPosts(p => p.filter(x => x.id !== postId)); };
   const toggleSave = useCallback((postId) => { setSaved(prev => ({ ...prev, [postId]: !prev[postId] })); }, []);
 
-  const storyUsers = posts.slice(0, 7).map((p, i) => ({ id: p.profile_id || i + 1, username: p.username, color: getACol(p.profile_id || i), hasStory: true, content: p.caption || "" }));
+  // ===== Stories: dados reais do backend, fallback para posts =====
+  const storyUsers = storyData.length > 0
+    ? storyData.map((s, i) => ({ id: s.profile_id || i + 1, username: s.username, color: s.color || getACol(s.profile_id || i), hasStory: true, content: s.content || s.image || "", image: s.image }))
+    : posts.slice(0, 7).map((p, i) => ({ id: p.profile_id || i + 1, username: p.username, color: getACol(p.profile_id || i), hasStory: true, content: p.caption || "" }));
+
+  // ===== Câmera → Story =====
+  const postStory = useCallback(async () => {
+    const screenshot = await fetchClient('takeScreenshot');
+    const imageUrl = screenshot?.url || '';
+    const r = await fetchBackend('ig_story_post', { image: imageUrl });
+    if (r?.ok) { loadStories(); }
+  }, [loadStories]);
 
   // Story timer
   useEffect(() => {
@@ -398,8 +411,8 @@ export default function Instagram({ onNavigate }) {
           <div style={{ display: "flex", justifyContent: "center", paddingTop: 60 }}><div style={{ width: 24, height: 24, border: "2px solid #262626", borderTopColor: "#F5F5F5", borderRadius: "50%", animation: "igSpin 0.8s linear infinite" }} /></div>
         ) : (<>
           {/* Stories (V0) */}
-          <div style={{ display: "flex", gap: 12, padding: "12px 12px", overflowX: "auto", borderBottom: "1px solid #262626" }}>
-            <button style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", flexShrink: 0, width: 66 }}>
+          <div style={{ display: "flex", gap: 12, padding: "12px 12px", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch", borderBottom: "1px solid #262626" }}>
+            <button onClick={postStory} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", flexShrink: 0, width: 66 }}>
               <div style={{ width: 62, height: 62, borderRadius: "50%", background: "#363636", position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "#3897f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, fontWeight: 700, color: "#fff" }}>{(myProfile?.username || "?").charAt(0).toUpperCase()}</div>
                 <div style={{ position: "absolute", bottom: 0, right: 0, width: 20, height: 20, borderRadius: "50%", background: "#0095F6", border: "2px solid #000", display: "flex", alignItems: "center", justifyContent: "center" }}>

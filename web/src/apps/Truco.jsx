@@ -1,289 +1,352 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from "react";
 
-const C = {
-  bg:'#1B5E20', felt:'#2E7D32', feltLight:'#388E3C',
-  text:'#fff', textSec:'#A5D6A7', gold:'#FFD700',
-  card:'#FAFAFA', cardShadow:'rgba(0,0,0,0.3)',
-  red:'#C62828', black:'#212121', accent:'#FFD54F',
-};
-const B = { background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center' };
+// ============================================================
+// Truco App — Visual V0 pixel-perfect
+// Mesa verde felt, cartas com naipes, score, IA opponent
+// TRUCO/SEIS/NOVE/DOZE | Zero backend
+// ============================================================
 
-// Naipes: ♠♥♦♣
-const NAIPES = ['♠','♥','♦','♣'];
-const VALORES = ['4','5','6','7','Q','J','K','A','2','3'];
-// Truco ranking (manilhas depend on vira, but simplified)
-const FORCA = {'4':1,'5':2,'6':3,'7':4,'Q':5,'J':6,'K':7,'A':8,'2':9,'3':10};
+const SUITS = ["espadas", "copas", "ouros", "paus"];
+const SUIT_SYMBOLS = { espadas: "\u2660", copas: "\u2665", ouros: "\u2666", paus: "\u2663" };
+const SUIT_COLORS = { espadas: "#333", copas: "#E53935", ouros: "#E53935", paus: "#333" };
+const VALUES = ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"];
 
-const shuffleDeck = () => {
+function createDeck() {
   const deck = [];
-  for (const n of NAIPES) for (const v of VALORES) deck.push({ naipe: n, valor: v });
-  for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+  const powerMap = { "4": 1, "5": 2, "6": 3, "7": 4, "Q": 5, "J": 6, "K": 7, "A": 8, "2": 9, "3": 10 };
+  for (const suit of SUITS) {
+    for (const value of VALUES) {
+      let power = powerMap[value] || 0;
+      if (value === "4" && suit === "paus") power = 14;
+      if (value === "7" && suit === "copas") power = 13;
+      if (value === "A" && suit === "espadas") power = 12;
+      if (value === "7" && suit === "ouros") power = 11;
+      deck.push({ value, suit, power });
+    }
+  }
   return deck;
-};
+}
 
-const cardColor = (naipe) => (naipe === '♥' || naipe === '♦') ? C.red : C.black;
-const cardKey = (c) => `${c.valor}${c.naipe}`;
-
-const Card = ({ card, faceDown, small, onClick, played, highlight }) => {
-  const w = small ? 42 : 60;
-  const h = small ? 62 : 88;
-  if (faceDown) return (
-    <div style={{ width:w, height:h, borderRadius:6, background:'linear-gradient(135deg, #1565C0, #0D47A1)', border:'2px solid #1976D2', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:`0 2px 6px ${C.cardShadow}` }}>
-      <div style={{ width:w-12, height:h-12, borderRadius:3, border:'1px solid rgba(255,255,255,0.2)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <span style={{ color:'rgba(255,255,255,0.3)', fontSize:small?14:20 }}>🂠</span>
-      </div>
-    </div>
-  );
-  return (
-    <button onClick={onClick} style={{
-      ...B, width:w, height:h, borderRadius:6, background:C.card, flexDirection:'column',
-      border: highlight ? `2px solid ${C.gold}` : '1px solid #ddd', cursor: onClick ? 'pointer' : 'default',
-      boxShadow: played ? '0 0 12px rgba(255,215,0,0.4)' : `0 2px 6px ${C.cardShadow}`,
-      transform: played ? 'scale(1.05)' : onClick ? 'translateY(0)' : 'none',
-      transition:'transform 0.15s, box-shadow 0.15s',
-      position:'relative',
-    }}>
-      <span style={{ color:cardColor(card.naipe), fontSize:small?14:18, fontWeight:700, position:'absolute', top:small?2:4, left:small?4:6 }}>{card.valor}</span>
-      <span style={{ color:cardColor(card.naipe), fontSize:small?18:28, marginTop:small?4:8 }}>{card.naipe}</span>
-      <span style={{ color:cardColor(card.naipe), fontSize:small?14:18, fontWeight:700, position:'absolute', bottom:small?2:4, right:small?4:6, transform:'rotate(180deg)' }}>{card.valor}</span>
-    </button>
-  );
-};
+function shuffleDeck(deck) {
+  const shuffled = [...deck];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
 
 export default function Truco() {
-  const [gameState, setGameState] = useState('menu'); // menu, playing, result
-  const [myHand, setMyHand] = useState([]);
-  const [cpuHand, setCpuHand] = useState([]);
-  const [vira, setVira] = useState(null);
-  const [myPlayed, setMyPlayed] = useState([]);
-  const [cpuPlayed, setCpuPlayed] = useState([]);
-  const [myScore, setMyScore] = useState(0);
-  const [cpuScore, setCpuScore] = useState(0);
-  const [myRounds, setMyRounds] = useState(0);
-  const [cpuRounds, setCpuRounds] = useState(0);
-  const [roundValue, setRoundValue] = useState(1);
-  const [trucoState, setTrucoState] = useState(null); // null, 'asked', 'accepted'
-  const [message, setMessage] = useState('');
-  const [turn, setTurn] = useState('player'); // player, cpu
-  const [roundNum, setRoundNum] = useState(0);
+  const [playerHand, setPlayerHand] = useState([]);
+  const [aiHand, setAiHand] = useState([]);
+  const [playerPlayed, setPlayerPlayed] = useState(null);
+  const [aiPlayed, setAiPlayed] = useState(null);
+  const [playerScore, setPlayerScore] = useState(0);
+  const [aiScore, setAiScore] = useState(0);
+  const [roundWins, setRoundWins] = useState([]);
+  const [stakes, setStakes] = useState(1);
+  const [trucoState, setTrucoState] = useState("none");
+  const [trucoAsker, setTrucoAsker] = useState(null);
+  const [message, setMessage] = useState("");
+  const [gamePhase, setGamePhase] = useState("deal");
 
-  // Get manilha based on vira
-  const getManilha = useCallback((v) => {
-    if (!v) return null;
-    const idx = VALORES.indexOf(v.valor);
-    return VALORES[(idx + 1) % VALORES.length];
+  const dealCards = useCallback(() => {
+    const deck = shuffleDeck(createDeck());
+    setPlayerHand(deck.slice(0, 3));
+    setAiHand(deck.slice(3, 6));
+    setPlayerPlayed(null);
+    setAiPlayed(null);
+    setRoundWins([]);
+    setStakes(1);
+    setTrucoState("none");
+    setTrucoAsker(null);
+    setMessage("");
+    setGamePhase("play");
   }, []);
 
-  const getCardForce = useCallback((card) => {
-    const manilha = getManilha(vira);
-    if (card.valor === manilha) {
-      // Manilha order: ♦ < ♠ < ♥ < ♣ (paus é zap)
-      const manilhaOrder = {'♦':11,'♠':12,'♥':13,'♣':14};
-      return manilhaOrder[card.naipe] || 11;
-    }
-    return FORCA[card.valor] || 0;
-  }, [vira, getManilha]);
+  useEffect(() => {
+    if (gamePhase === "deal") dealCards();
+  }, [gamePhase, dealCards]);
 
-  const startGame = () => {
-    const deck = shuffleDeck();
-    setMyHand([deck[0], deck[1], deck[2]]);
-    setCpuHand([deck[3], deck[4], deck[5]]);
-    setVira(deck[6]);
-    setMyPlayed([]); setCpuPlayed([]);
-    setMyRounds(0); setCpuRounds(0);
-    setRoundValue(1); setTrucoState(null);
-    setMessage('Sua vez! Jogue uma carta.');
-    setTurn('player'); setRoundNum(0);
-    setGameState('playing');
-  };
+  const playCard = useCallback((card) => {
+    if (gamePhase !== "play" || playerPlayed) return;
+    setPlayerPlayed(card);
+    setPlayerHand((prev) => prev.filter((c) => c !== card));
 
-  const playCard = (card, idx) => {
-    if (turn !== 'player') return;
-    const newHand = myHand.filter((_, i) => i !== idx);
-    setMyHand(newHand);
-    setMyPlayed(p => [...p, card]);
-    setTurn('cpu');
-    setMessage('CPU pensando...');
-
-    // CPU plays after delay
     setTimeout(() => {
-      // CPU AI: play lowest card that wins, or lowest card
-      const myForce = getCardForce(card);
-      let cpuCard = null;
-      let cpuIdx = -1;
+      setAiHand((prev) => {
+        if (prev.length === 0) return prev;
+        const sorted = [...prev].sort((a, b) => a.power - b.power);
+        const beater = sorted.find((c) => c.power > card.power);
+        const chosen = beater || sorted[0];
+        setAiPlayed(chosen);
+        return prev.filter((c) => c !== chosen);
+      });
+      setTimeout(() => setGamePhase("resolve"), 800);
+    }, 600);
+  }, [gamePhase, playerPlayed]);
 
-      // Try to find a card that beats player's
-      const sorted = cpuHand.map((c, i) => ({ card: c, idx: i, force: getCardForce(c) })).sort((a, b) => a.force - b.force);
-      const winner = sorted.find(c => c.force > myForce);
-      if (winner) { cpuCard = winner.card; cpuIdx = winner.idx; }
-      else { cpuCard = sorted[0]?.card; cpuIdx = sorted[0]?.idx; }
+  useEffect(() => {
+    if (gamePhase !== "resolve" || !playerPlayed || !aiPlayed) return;
 
-      if (cpuCard === null || cpuIdx === -1) return;
-      const newCpuHand = cpuHand.filter((_, i) => i !== cpuIdx);
-      setCpuHand(newCpuHand);
-      setCpuPlayed(p => [...p, cpuCard]);
+    let winner = "draw";
+    if (playerPlayed.power > aiPlayed.power) winner = "player";
+    else if (aiPlayed.power > playerPlayed.power) winner = "ai";
 
-      // Determine round winner
-      const cpuForce = getCardForce(cpuCard);
+    const newWins = [...roundWins, winner];
+    setRoundWins(newWins);
+
+    const playerWins = newWins.filter((w) => w === "player").length;
+    const aiWins = newWins.filter((w) => w === "ai").length;
+
+    if (playerWins >= 2 || aiWins >= 2 || newWins.length >= 3) {
       setTimeout(() => {
-        let mr = myRounds, cr = cpuRounds;
-        if (myForce > cpuForce) { mr++; setMyRounds(mr); setMessage('Você ganhou a rodada!'); }
-        else if (cpuForce > myForce) { cr++; setCpuRounds(cr); setMessage('CPU ganhou a rodada!'); }
-        else { setMessage('Empate na rodada!'); mr++; cr++; setMyRounds(mr); setCpuRounds(cr); }
+        let handWinner;
+        if (playerWins > aiWins) handWinner = "player";
+        else if (aiWins > playerWins) handWinner = "ai";
+        else handWinner = newWins[0] === "draw" ? "player" : newWins[0];
 
-        const rn = roundNum + 1;
-        setRoundNum(rn);
-
-        // Check if hand is over (best of 3)
-        if (mr >= 2 || cr >= 2 || rn >= 3) {
-          setTimeout(() => {
-            if (mr > cr) {
-              const ns = myScore + roundValue;
-              setMyScore(ns);
-              if (ns >= 12) { setMessage('🏆 Você venceu o jogo!'); setGameState('result'); }
-              else { setMessage(`+${roundValue} ponto${roundValue>1?'s':''} pra você!`); setTimeout(startGame, 1500); }
-            } else if (cr > mr) {
-              const ns = cpuScore + roundValue;
-              setCpuScore(ns);
-              if (ns >= 12) { setMessage('😢 CPU venceu o jogo!'); setGameState('result'); }
-              else { setMessage(`+${roundValue} ponto${roundValue>1?'s':''} pra CPU!`); setTimeout(startGame, 1500); }
-            } else {
-              setMessage('Mão empatada!'); setTimeout(startGame, 1500);
-            }
-          }, 1000);
+        if (handWinner === "player") {
+          const newScore = playerScore + stakes;
+          setPlayerScore(newScore);
+          setMessage(`Voce ganhou ${stakes} ponto${stakes > 1 ? "s" : ""}!`);
+          if (newScore >= 12) { setGamePhase("gameOver"); return; }
         } else {
-          setTimeout(() => { setTurn('player'); setMessage('Sua vez!'); }, 800);
+          const newScore = aiScore + stakes;
+          setAiScore(newScore);
+          setMessage(`IA ganhou ${stakes} ponto${stakes > 1 ? "s" : ""}!`);
+          if (newScore >= 12) { setGamePhase("gameOver"); return; }
         }
-      }, 600);
-    }, 800);
-  };
-
-  const callTruco = () => {
-    const next = roundValue === 1 ? 3 : roundValue === 3 ? 6 : roundValue === 6 ? 9 : 12;
-    if (next > 12) return;
-    // CPU decides (50% accept for now, higher if good hand)
-    const avgForce = cpuHand.reduce((s, c) => s + getCardForce(c), 0) / Math.max(cpuHand.length, 1);
-    const accepts = avgForce > 5 || Math.random() > 0.4;
-    if (accepts) {
-      setRoundValue(next);
-      setTrucoState('accepted');
-      setMessage(`CPU aceitou! Vale ${next}!`);
-      setTimeout(() => setTrucoState(null), 1500);
+        setGamePhase("roundEnd");
+      }, 1000);
     } else {
-      // CPU runs
-      const pts = roundValue;
-      setMyScore(s => s + pts);
-      setMessage(`CPU correu! +${pts} pra você`);
-      setTimeout(startGame, 1500);
+      setTimeout(() => {
+        setPlayerPlayed(null);
+        setAiPlayed(null);
+        setGamePhase("play");
+      }, 1000);
     }
+  }, [gamePhase, playerPlayed, aiPlayed, roundWins, playerScore, aiScore, stakes]);
+
+  const callTruco = useCallback(() => {
+    if (trucoState !== "none") return;
+    const nextStakes = stakes === 1 ? 3 : stakes === 3 ? 6 : stakes === 6 ? 9 : 12;
+    setTrucoState("asked");
+    setTrucoAsker("player");
+    setMessage(stakes === 1 ? "TRUCO!" : stakes === 3 ? "SEIS!" : stakes === 6 ? "NOVE!" : "DOZE!");
+
+    setTimeout(() => {
+      if (Math.random() > 0.4) {
+        setStakes(nextStakes);
+        setTrucoState("accepted");
+        setMessage("IA aceitou!");
+        setTimeout(() => setMessage(""), 1500);
+      } else {
+        setPlayerScore((prev) => prev + stakes);
+        setMessage("IA correu!");
+        setGamePhase("roundEnd");
+      }
+    }, 1500);
+  }, [stakes, trucoState]);
+
+  const renderCard = (card, faceDown, small) => {
+    if (!card) return null;
+    const w = small ? 50 : 65;
+    const h = small ? 72 : 95;
+
+    if (faceDown) {
+      return (
+        <div style={{
+          width: w, height: h, borderRadius: 6,
+          background: "linear-gradient(135deg, #1a237e, #0d47a1)",
+          border: "2px solid #fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <div style={{
+            width: w - 12, height: h - 12, borderRadius: 4,
+            border: "1px solid rgba(255,255,255,0.3)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width={20} height={20} viewBox="0 0 24 24" fill="rgba(255,255,255,0.4)">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div style={{
+        width: w, height: h, borderRadius: 6, background: "#fff",
+        border: "2px solid #ddd", padding: 4,
+        display: "flex", flexDirection: "column", position: "relative",
+        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ color: SUIT_COLORS[card.suit], fontSize: small ? 13 : 16, fontWeight: 800, lineHeight: 1 }}>
+          {card.value}
+        </div>
+        <div style={{ color: SUIT_COLORS[card.suit], fontSize: small ? 10 : 12, lineHeight: 1 }}>
+          {SUIT_SYMBOLS[card.suit]}
+        </div>
+        <div style={{
+          position: "absolute", top: "50%", left: "50%",
+          transform: "translate(-50%, -50%)",
+          color: SUIT_COLORS[card.suit], fontSize: small ? 22 : 28, opacity: 0.3,
+        }}>
+          {SUIT_SYMBOLS[card.suit]}
+        </div>
+      </div>
+    );
   };
 
-  // ===== MENU =====
-  if (gameState === 'menu') return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(180deg, ${C.bg}, #0D3311)`, alignItems:'center', justifyContent:'center', gap:16 }}>
-      <div style={{ fontSize:64, marginBottom:8 }}>🃏</div>
-      <div style={{ color:C.gold, fontSize:28, fontWeight:900, textShadow:'0 2px 8px rgba(0,0,0,0.5)' }}>TRUCO</div>
-      <div style={{ color:C.textSec, fontSize:14, marginBottom:16 }}>Truco Paulista • Melhor de 12</div>
-      <button onClick={() => { setMyScore(0); setCpuScore(0); startGame(); }} style={{
-        padding:'16px 48px', borderRadius:12, border:'none', cursor:'pointer',
-        background:`linear-gradient(135deg, ${C.gold}, #FFA000)`, color:'#000', fontSize:18, fontWeight:800,
-        boxShadow:'0 4px 16px rgba(255,215,0,0.4)',
-      }}>JOGAR</button>
-    </div>
-  );
-
-  // ===== RESULT =====
-  if (gameState === 'result') return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:`linear-gradient(180deg, ${C.bg}, #0D3311)`, alignItems:'center', justifyContent:'center', gap:16 }}>
-      <div style={{ fontSize:64 }}>{myScore >= 12 ? '🏆' : '😢'}</div>
-      <div style={{ color:C.gold, fontSize:24, fontWeight:800 }}>{myScore >= 12 ? 'VITÓRIA!' : 'DERROTA'}</div>
-      <div style={{ color:C.text, fontSize:16 }}>Você {myScore} x {cpuScore} CPU</div>
-      <button onClick={() => { setMyScore(0); setCpuScore(0); startGame(); }} style={{
-        marginTop:16, padding:'14px 40px', borderRadius:12, border:'none', cursor:'pointer',
-        background:C.gold, color:'#000', fontSize:16, fontWeight:700,
-      }}>Jogar novamente</button>
-      <button onClick={() => setGameState('menu')} style={{
-        padding:'10px 32px', borderRadius:8, border:`1px solid ${C.textSec}`, cursor:'pointer',
-        background:'transparent', color:C.textSec, fontSize:14,
-      }}>Menu</button>
-    </div>
-  );
-
-  // ===== PLAYING =====
-  const manilha = getManilha(vira);
-  const nextTrucoValue = roundValue === 1 ? 3 : roundValue === 3 ? 6 : roundValue === 6 ? 9 : 12;
+  const trucoLabel = stakes === 1 ? "TRUCO!" : stakes === 3 ? "SEIS!" : stakes === 6 ? "NOVE!" : stakes === 9 ? "DOZE!" : "";
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:`radial-gradient(ellipse at center, ${C.feltLight}, ${C.bg})`, position:'relative' }}>
-      {/* Score bar */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 14px', background:'rgba(0,0,0,0.3)' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ color:C.gold, fontSize:13, fontWeight:700 }}>Você: {myScore}</span>
-          <span style={{ color:C.textSec, fontSize:11 }}>({myRounds} de 2)</span>
+    <div style={{
+      width: "100%", height: "100%",
+      background: "linear-gradient(180deg, #1a472a 0%, #2d5a3f 50%, #1a472a 100%)",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+    }}>
+      {/* Score header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "8px 16px", background: "rgba(0,0,0,0.3)", flexShrink: 0,
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: "#8BC34A", fontSize: 10, fontWeight: 600 }}>VOCE</div>
+          <div style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{playerScore}</div>
         </div>
-        <div style={{ background:'rgba(255,255,255,0.1)', padding:'3px 10px', borderRadius:8 }}>
-          <span style={{ color:C.gold, fontSize:12, fontWeight:700 }}>Vale {roundValue}</span>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: "#FFD600", fontSize: 11, fontWeight: 700 }}>TRUCO</div>
+          <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
+            {roundWins.map((w, i) => (
+              <div key={i} style={{
+                width: 10, height: 10, borderRadius: "50%",
+                background: w === "player" ? "#8BC34A" : w === "ai" ? "#F44336" : "#FFD600",
+              }} />
+            ))}
+            {Array.from({ length: 3 - roundWins.length }, (_, i) => (
+              <div key={`e${i}`} style={{
+                width: 10, height: 10, borderRadius: "50%",
+                background: "rgba(255,255,255,0.2)",
+              }} />
+            ))}
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, marginTop: 2 }}>
+            Vale: {stakes} pts
+          </div>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <span style={{ color:C.textSec, fontSize:11 }}>({cpuRounds} de 2)</span>
-          <span style={{ color:'#EF5350', fontSize:13, fontWeight:700 }}>CPU: {cpuScore}</span>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ color: "#F44336", fontSize: 10, fontWeight: 600 }}>IA</div>
+          <div style={{ color: "#fff", fontSize: 22, fontWeight: 800 }}>{aiScore}</div>
         </div>
       </div>
 
-      {/* Vira */}
-      {vira && (
-        <div style={{ position:'absolute', top:42, right:10, display:'flex', flexDirection:'column', alignItems:'center', gap:2, zIndex:1 }}>
-          <span style={{ color:C.textSec, fontSize:9, fontWeight:600 }}>VIRA</span>
-          <Card card={vira} small />
-          <span style={{ color:C.gold, fontSize:9, fontWeight:600 }}>Manilha: {manilha}</span>
-        </div>
-      )}
-
-      {/* CPU hand */}
-      <div style={{ display:'flex', justifyContent:'center', gap:6, padding:'10px 10px 4px' }}>
-        {cpuHand.map((_, i) => <Card key={i} faceDown />)}
-      </div>
-
-      {/* CPU played */}
-      <div style={{ display:'flex', justifyContent:'center', gap:8, minHeight:52, padding:'4px 0' }}>
-        {cpuPlayed.map((c, i) => <Card key={cardKey(c)+i} card={c} small played />)}
-      </div>
-
-      {/* Message */}
-      <div style={{ textAlign:'center', padding:'6px 16px', flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
-        <div style={{
-          color:C.text, fontSize:15, fontWeight:600,
-          background:'rgba(0,0,0,0.3)', padding:'8px 20px', borderRadius:20,
-          textShadow:'0 1px 2px rgba(0,0,0,0.3)',
-        }}>{message}</div>
-      </div>
-
-      {/* My played */}
-      <div style={{ display:'flex', justifyContent:'center', gap:8, minHeight:52, padding:'4px 0' }}>
-        {myPlayed.map((c, i) => <Card key={cardKey(c)+i} card={c} small played />)}
-      </div>
-
-      {/* My hand */}
-      <div style={{ display:'flex', justifyContent:'center', gap:8, padding:'4px 10px 8px' }}>
-        {myHand.map((c, i) => (
-          <Card key={cardKey(c)} card={c} onClick={turn === 'player' ? () => playCard(c, i) : undefined}
-            highlight={c.valor === manilha} />
+      {/* AI hand */}
+      <div style={{
+        display: "flex", justifyContent: "center", gap: 4,
+        padding: "8px 0", flexShrink: 0,
+      }}>
+        {aiHand.map((_, i) => (
+          <div key={i}>{renderCard({ value: "?", suit: "paus", power: 0 }, true, true)}</div>
         ))}
       </div>
 
-      {/* Action buttons */}
-      <div style={{ display:'flex', gap:8, padding:'4px 16px 14px', justifyContent:'center' }}>
-        {turn === 'player' && nextTrucoValue <= 12 && (
-          <button onClick={callTruco} style={{
-            padding:'10px 24px', borderRadius:8, border:'none', cursor:'pointer',
-            background:`linear-gradient(135deg, ${C.gold}, #FFA000)`, color:'#000', fontSize:14, fontWeight:800,
-            boxShadow:'0 2px 8px rgba(255,215,0,0.3)',
-          }}>{roundValue === 1 ? 'TRUCO!' : roundValue === 3 ? 'SEIS!' : roundValue === 6 ? 'NOVE!' : 'DOZE!'}</button>
+      {/* Table center */}
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        position: "relative", minHeight: 0,
+      }}>
+        <div style={{
+          position: "absolute", inset: 16,
+          borderRadius: 20, border: "2px solid rgba(255,255,255,0.1)",
+          background: "rgba(0,0,0,0.1)",
+        }} />
+
+        {message && (
+          <div style={{
+            position: "absolute", top: 8,
+            padding: "6px 20px", borderRadius: 20,
+            background: "rgba(0,0,0,0.7)",
+            color: "#FFD600", fontSize: 16, fontWeight: 800,
+            zIndex: 5,
+          }}>
+            {message}
+          </div>
         )}
-        <button onClick={() => { setCpuScore(s => s + roundValue); if (cpuScore + roundValue >= 12) { setMessage('CPU venceu!'); setGameState('result'); } else { setMessage('Você correu!'); setTimeout(startGame, 1000); } }} style={{
-          padding:'10px 20px', borderRadius:8, border:`1px solid rgba(255,255,255,0.2)`, cursor:'pointer',
-          background:'rgba(0,0,0,0.3)', color:C.textSec, fontSize:13, fontWeight:600,
-        }}>Correr</button>
+
+        <div style={{ marginBottom: 16, minHeight: 95, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+          {aiPlayed && renderCard(aiPlayed)}
+        </div>
+
+        <div style={{
+          width: 36, height: 36, borderRadius: "50%",
+          background: "rgba(0,0,0,0.4)", border: "2px solid rgba(255,255,255,0.2)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", fontSize: 11, fontWeight: 800, zIndex: 2,
+          marginBottom: 16,
+        }}>
+          VS
+        </div>
+
+        <div style={{ minHeight: 95, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2 }}>
+          {playerPlayed && renderCard(playerPlayed)}
+        </div>
+      </div>
+
+      {/* Truco button */}
+      {gamePhase === "play" && stakes < 12 && trucoState === "none" && (
+        <div style={{
+          display: "flex", justifyContent: "center", padding: "4px 0", flexShrink: 0,
+        }}>
+          <button onClick={callTruco} style={{
+            padding: "8px 32px", borderRadius: 20,
+            background: "linear-gradient(135deg, #F44336, #D32F2F)",
+            border: "2px solid #FFCDD2",
+            color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer",
+            letterSpacing: 1,
+          }}>
+            {trucoLabel}
+          </button>
+        </div>
+      )}
+
+      {/* Player hand */}
+      <div style={{
+        display: "flex", justifyContent: "center", gap: 6,
+        padding: "8px 16px 12px", flexShrink: 0,
+      }}>
+        {gamePhase === "play" && playerHand.map((card, i) => (
+          <button
+            key={i}
+            onClick={() => playCard(card)}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              padding: 0, transition: "transform 0.15s",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-8px)")}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
+          >
+            {renderCard(card)}
+          </button>
+        ))}
+        {(gamePhase === "roundEnd" || gamePhase === "gameOver") && (
+          <button onClick={() => {
+            if (gamePhase === "gameOver") {
+              setPlayerScore(0);
+              setAiScore(0);
+            }
+            setGamePhase("deal");
+          }} style={{
+            padding: "12px 32px", borderRadius: 20,
+            background: "linear-gradient(135deg, #FFD600, #FFA000)",
+            border: "none", color: "#000", fontSize: 15, fontWeight: 800,
+            cursor: "pointer",
+          }}>
+            {gamePhase === "gameOver" ? "Novo Jogo" : "Proxima Mao"}
+          </button>
+        )}
       </div>
     </div>
   );

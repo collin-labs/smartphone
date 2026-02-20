@@ -178,6 +178,18 @@ export default function WhatsApp({ onNavigate, params }) {
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
+  // ===== Câmera → Enviar imagem =====
+  const sendPhoto = useCallback(async () => {
+    if (!activeChat) return;
+    const screenshot = await fetchClient('takeScreenshot');
+    const imageUrl = screenshot?.url || '';
+    if (!imageUrl) return;
+    const opt = { id: Date.now(), sender_phone: myPhone, message: imageUrl, type: 'image', is_read: 0, created_at: new Date().toISOString(), _pending: true };
+    setMessages(p => [...p, opt]);
+    const r = await fetchBackend('whatsapp_send', { chatId: activeChat.id, message: imageUrl, type: 'image' });
+    if (r?.ok && r?.message) setMessages(p => p.map(m => m.id === opt.id ? { ...r.message, _pending: false } : m));
+  }, [activeChat, myPhone]);
+
   usePusherEvent('WHATSAPP_MESSAGE', useCallback((d) => {
     if (activeChat && d.chatId === activeChat.id) {
       setMessages(p => { if (p.find(m => m.id === d.id)) return p; return [...p, d]; });
@@ -379,7 +391,19 @@ export default function WhatsApp({ onNavigate, params }) {
                   {activeChat.is_group && !isMe && (
                     <div style={{ color: "#00A884", fontSize: 12, fontWeight: 600, marginBottom: 2 }}>{msg.sender_name || msg.sender_phone}</div>
                   )}
-                  <span style={{ color: "#E9EDEF", fontSize: 14.2, lineHeight: 1.35, wordBreak: "break-word" }}>{msg.message}</span>
+                  {msg.type === 'image' ? (
+                    <div style={{ width: 200, height: 150, borderRadius: 6, background: "linear-gradient(135deg, #1a2a3a, #2a3a4a)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 2, overflow: "hidden" }}>
+                      {msg.message && msg.message.startsWith('http') ? (
+                        <img src={msg.message} alt="foto" style={{ width: "100%", height: "100%", objectFit: "cover" }} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} />
+                      ) : null}
+                      <div style={{ display: msg.message?.startsWith('http') ? 'none' : 'flex', flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <svg width={28} height={28} viewBox="0 0 24 24" fill="none" stroke="#8696A0" strokeWidth="1.5"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                        <span style={{ color: "#8696A0", fontSize: 11 }}>Foto</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{ color: "#E9EDEF", fontSize: 14.2, lineHeight: 1.35, wordBreak: "break-word" }}>{msg.message}</span>
+                  )}
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 3, marginTop: 2 }}>
                     <span style={{ color: "rgba(134,150,160,0.8)", fontSize: 11 }}>{formatTime(msg.created_at)}</span>
                     {isMe && (msg.is_read ? <CheckDouble color="#53BDEB" /> : <CheckDouble color="#8696A0" />)}
@@ -397,12 +421,14 @@ export default function WhatsApp({ onNavigate, params }) {
             <EmojiIcon />
             <input value={inputText} onChange={(e) => setInputText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSend()}
               placeholder="Mensagem" style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#E9EDEF", fontSize: 15 }} />
-            <AttachIcon />
+            <button onClick={sendPhoto} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0 }}><AttachIcon /></button>
           </div>
           {inputText.trim() ? (
             <button onClick={handleSend} style={{ width: 44, height: 44, borderRadius: "50%", background: "#00A884", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><SendIcon /></button>
           ) : (
-            <button style={{ width: 44, height: 44, borderRadius: "50%", background: "#00A884", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><MicIcon /></button>
+            <button onClick={sendPhoto} style={{ width: 44, height: 44, borderRadius: "50%", background: "#00A884", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#E9EDEF" strokeWidth="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            </button>
           )}
         </div>
       </div>

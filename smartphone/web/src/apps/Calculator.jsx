@@ -1,151 +1,196 @@
 import { useState, useCallback } from "react";
 
+// ============================================================
+// Calculator App — Visual V0 pixel-perfect (iOS-style dark mode)
+// Display + numpad + operadores coloridos | Zero backend
+// ============================================================
+
 export function CalculatorApp() {
   const [display, setDisplay] = useState("0");
-  const [prev, setPrev] = useState(null);
-  const [op, setOp] = useState(null);
-  const [fresh, setFresh] = useState(true);
+  const [prevValue, setPrevValue] = useState(null);
+  const [operator, setOperator] = useState(null);
+  const [waitingForOperand, setWaitingForOperand] = useState(false);
+  const [history, setHistory] = useState("");
 
-  const handleNumber = useCallback(
-    (n) => {
-      if (fresh) {
-        setDisplay(n === "." ? "0." : n);
-        setFresh(false);
-      } else {
-        if (n === "." && display.includes(".")) return;
-        setDisplay((d) => (d === "0" && n !== "." ? n : d + n));
-      }
-    },
-    [fresh, display]
-  );
-
-  const handleOp = useCallback(
-    (nextOp) => {
-      const current = parseFloat(display);
-      if (prev !== null && op && !fresh) {
-        let result = 0;
-        switch (op) {
-          case "+": result = prev + current; break;
-          case "-": result = prev - current; break;
-          case "×": result = prev * current; break;
-          case "÷": result = current !== 0 ? prev / current : 0; break;
-        }
-        setDisplay(String(result));
-        setPrev(result);
-      } else {
-        setPrev(current);
-      }
-      setOp(nextOp);
-      setFresh(true);
-    },
-    [display, prev, op, fresh]
-  );
-
-  const handleEquals = useCallback(() => {
-    if (prev === null || !op) return;
-    const current = parseFloat(display);
-    let result = 0;
-    switch (op) {
-      case "+": result = prev + current; break;
-      case "-": result = prev - current; break;
-      case "×": result = prev * current; break;
-      case "÷": result = current !== 0 ? prev / current : 0; break;
+  const inputDigit = useCallback((digit) => {
+    if (waitingForOperand) {
+      setDisplay(digit);
+      setWaitingForOperand(false);
+    } else {
+      setDisplay(display === "0" ? digit : display + digit);
     }
-    setDisplay(String(result));
-    setPrev(null);
-    setOp(null);
-    setFresh(true);
-  }, [display, prev, op]);
+  }, [display, waitingForOperand]);
 
-  const handleClear = useCallback(() => {
+  const inputDecimal = useCallback(() => {
+    if (waitingForOperand) {
+      setDisplay("0.");
+      setWaitingForOperand(false);
+      return;
+    }
+    if (!display.includes(".")) {
+      setDisplay(display + ".");
+    }
+  }, [display, waitingForOperand]);
+
+  const clear = useCallback(() => {
     setDisplay("0");
-    setPrev(null);
-    setOp(null);
-    setFresh(true);
+    setPrevValue(null);
+    setOperator(null);
+    setWaitingForOperand(false);
+    setHistory("");
   }, []);
 
-  const handlePercent = useCallback(() => {
-    setDisplay((d) => String(parseFloat(d) / 100));
-  }, []);
+  const toggleSign = useCallback(() => {
+    const val = parseFloat(display);
+    setDisplay(String(val * -1));
+  }, [display]);
 
-  const handleToggleSign = useCallback(() => {
-    setDisplay((d) => String(parseFloat(d) * -1));
-  }, []);
+  const percentage = useCallback(() => {
+    const val = parseFloat(display);
+    setDisplay(String(val / 100));
+  }, [display]);
+
+  const performOperation = useCallback((nextOperator) => {
+    const inputValue = parseFloat(display);
+
+    if (prevValue === null) {
+      setPrevValue(inputValue);
+      setHistory(`${inputValue} ${nextOperator}`);
+    } else if (operator) {
+      let result = prevValue;
+      switch (operator) {
+        case "+": result = prevValue + inputValue; break;
+        case "-": result = prevValue - inputValue; break;
+        case "x": result = prevValue * inputValue; break;
+        case "/": result = inputValue !== 0 ? prevValue / inputValue : 0; break;
+      }
+      const formatted = parseFloat(result.toFixed(10));
+      setDisplay(String(formatted));
+      setPrevValue(formatted);
+      setHistory(`${formatted} ${nextOperator}`);
+    }
+    setWaitingForOperand(true);
+    setOperator(nextOperator);
+  }, [display, operator, prevValue]);
+
+  const calculate = useCallback(() => {
+    if (operator === null || prevValue === null) return;
+    const inputValue = parseFloat(display);
+    let result = prevValue;
+    switch (operator) {
+      case "+": result = prevValue + inputValue; break;
+      case "-": result = prevValue - inputValue; break;
+      case "x": result = prevValue * inputValue; break;
+      case "/": result = inputValue !== 0 ? prevValue / inputValue : 0; break;
+    }
+    const formatted = parseFloat(result.toFixed(10));
+    setDisplay(String(formatted));
+    setPrevValue(null);
+    setOperator(null);
+    setWaitingForOperand(true);
+    setHistory("");
+  }, [display, operator, prevValue]);
 
   const formatDisplay = (val) => {
+    if (val.includes(".") && val.endsWith(".")) return val;
     const num = parseFloat(val);
     if (isNaN(num)) return "0";
-    if (val.endsWith(".")) return val;
-    if (val.includes(".") && val.endsWith("0") && !fresh) return val;
-    if (Math.abs(num) >= 1e12) return num.toExponential(4);
-    return num.toLocaleString("en", { maximumFractionDigits: 8 });
+    if (val.includes(".")) {
+      const parts = val.split(".");
+      return parseFloat(parts[0]).toLocaleString("pt-BR") + "," + parts[1];
+    }
+    if (Math.abs(num) > 999999999) return num.toExponential(4);
+    return num.toLocaleString("pt-BR");
   };
 
-  const buttons = [
-    ["C", "±", "%", "÷"],
-    ["7", "8", "9", "×"],
-    ["4", "5", "6", "-"],
-    ["1", "2", "3", "+"],
-    ["0", ".", "="],
-  ];
+  const displayFormatted = formatDisplay(display);
+  const displaySize = displayFormatted.length > 9 ? 32 : displayFormatted.length > 6 ? 42 : 56;
 
-  const handlePress = (btn) => {
-    if (btn === "C") handleClear();
-    else if (btn === "±") handleToggleSign();
-    else if (btn === "%") handlePercent();
-    else if (btn === "=") handleEquals();
-    else if (["+", "-", "×", "÷"].includes(btn)) handleOp(btn);
-    else handleNumber(btn);
-  };
-
-  const getButtonStyle = (btn) => {
-    if (["+", "-", "×", "÷", "="].includes(btn))
-      return "bg-[#0A84FF] text-white text-[22px] font-medium active:bg-[#0A84FF]/70";
-    if (["C", "±", "%"].includes(btn))
-      return "bg-[#3a3a3c] text-white text-[17px] font-medium active:bg-[#4a4a4c]";
-    return "bg-[#1c1c1e] text-white text-[22px] font-medium active:bg-[#2c2c2e] border border-white/[0.06]";
-  };
+  const buttonStyle = (bg, color, isWide) => ({
+    width: isWide ? "calc(50% - 4px)" : "calc(25% - 6px)",
+    aspectRatio: isWide ? "2.15/1" : "1/1",
+    borderRadius: isWide ? 40 : "50%",
+    background: bg,
+    border: "none",
+    color,
+    fontSize: 28,
+    fontWeight: 400,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: isWide ? "flex-start" : "center",
+    paddingLeft: isWide ? 28 : 0,
+  });
 
   return (
-    <div className="flex h-full flex-col bg-black px-3 pb-4 pt-2">
+    <div style={{
+      width: "100%", height: "100%", background: "#000",
+      display: "flex", flexDirection: "column",
+    }}>
       {/* Display */}
-      <div className="flex flex-1 items-end justify-end px-2 pb-3">
-        <span
-          className="text-right font-extralight tracking-tight text-white"
-          style={{
-            fontSize: display.length > 9 ? 36 : display.length > 6 ? 46 : 58,
-            lineHeight: 1.1,
-          }}
-        >
-          {formatDisplay(display)}
-        </span>
+      <div style={{
+        flex: 1, display: "flex", flexDirection: "column",
+        justifyContent: "flex-end", padding: "0 20px 8px",
+      }}>
+        {history && (
+          <div style={{ color: "#666", fontSize: 16, textAlign: "right", marginBottom: 4 }}>
+            {history}
+          </div>
+        )}
+        <div style={{
+          color: "#fff", fontSize: displaySize, fontWeight: 300,
+          textAlign: "right", lineHeight: 1.1,
+          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+        }}>
+          {displayFormatted}
+        </div>
       </div>
 
       {/* Buttons */}
-      <div className="flex flex-col gap-[10px]">
-        {buttons.map((row, ri) => (
-          <div key={ri} className="flex gap-[10px]">
-            {row.map((btn) => {
-              const isZero = btn === "0";
-              return (
-                <button
-                  key={btn}
-                  onClick={() => handlePress(btn)}
-                  className={`flex items-center justify-center rounded-full transition-colors ${getButtonStyle(btn)} ${
-                    isZero ? "flex-[2.15]" : "flex-1"
-                  }`}
-                  style={{
-                    height: 64,
-                    paddingLeft: isZero ? 24 : undefined,
-                    justifyContent: isZero ? "flex-start" : "center",
-                  }}
-                >
-                  {btn}
-                </button>
-              );
-            })}
-          </div>
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 8,
+        padding: "8px 12px 20px",
+      }}>
+        {/* Row 1: AC, +/-, %, / */}
+        <button onClick={clear} style={buttonStyle("#A5A5A5", "#000")}>
+          {display === "0" && !prevValue ? "AC" : "C"}
+        </button>
+        <button onClick={toggleSign} style={buttonStyle("#A5A5A5", "#000")}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/><line x1="2" y1="22" x2="22" y2="2"/></svg>
+        </button>
+        <button onClick={percentage} style={buttonStyle("#A5A5A5", "#000")}>%</button>
+        <button onClick={() => performOperation("/")} style={buttonStyle(operator === "/" && waitingForOperand ? "#fff" : "#FF9F0A", operator === "/" && waitingForOperand ? "#FF9F0A" : "#fff")}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><circle cx="12" cy="6" r="1.5" fill="currentColor"/><circle cx="12" cy="18" r="1.5" fill="currentColor"/></svg>
+        </button>
+
+        {/* Row 2: 7, 8, 9, x */}
+        {["7", "8", "9"].map((d) => (
+          <button key={d} onClick={() => inputDigit(d)} style={buttonStyle("#333333", "#fff")}>{d}</button>
         ))}
+        <button onClick={() => performOperation("x")} style={buttonStyle(operator === "x" && waitingForOperand ? "#fff" : "#FF9F0A", operator === "x" && waitingForOperand ? "#FF9F0A" : "#fff")}>
+          <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="6" y1="6" x2="18" y2="18"/><line x1="6" y1="18" x2="18" y2="6"/></svg>
+        </button>
+
+        {/* Row 3: 4, 5, 6, - */}
+        {["4", "5", "6"].map((d) => (
+          <button key={d} onClick={() => inputDigit(d)} style={buttonStyle("#333333", "#fff")}>{d}</button>
+        ))}
+        <button onClick={() => performOperation("-")} style={buttonStyle(operator === "-" && waitingForOperand ? "#fff" : "#FF9F0A", operator === "-" && waitingForOperand ? "#FF9F0A" : "#fff")}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+
+        {/* Row 4: 1, 2, 3, + */}
+        {["1", "2", "3"].map((d) => (
+          <button key={d} onClick={() => inputDigit(d)} style={buttonStyle("#333333", "#fff")}>{d}</button>
+        ))}
+        <button onClick={() => performOperation("+")} style={buttonStyle(operator === "+" && waitingForOperand ? "#fff" : "#FF9F0A", operator === "+" && waitingForOperand ? "#FF9F0A" : "#fff")}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/><line x1="12" y1="5" x2="12" y2="19"/></svg>
+        </button>
+
+        {/* Row 5: 0 (wide), ., = */}
+        <button onClick={() => inputDigit("0")} style={buttonStyle("#333333", "#fff", true)}>0</button>
+        <button onClick={inputDecimal} style={buttonStyle("#333333", "#fff")}>,</button>
+        <button onClick={calculate} style={buttonStyle("#FF9F0A", "#fff")}>=</button>
       </div>
     </div>
   );

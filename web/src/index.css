@@ -79,24 +79,41 @@ html, body, #root {
 }
 
 /* ============================================
-   SCROLLBAR (thin, almost invisible)
+   SCROLLBAR — HIDDEN (phone UI = no scrollbar)
    ============================================ */
+*::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+* {
+  scrollbar-width: none !important;
+  -ms-overflow-style: none !important;
+}
+
+/* Fallback class for legacy refs */
 .phone-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255,255,255,0.1) transparent;
+  scrollbar-width: none;
 }
-
 .phone-scrollbar::-webkit-scrollbar {
-  width: 3px;
+  display: none;
 }
 
-.phone-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+/* ============================================
+   CAROUSEL — Modern horizontal snap scroll
+   ============================================ */
+.phone-carousel {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  gap: 12px;
+  padding: 12px 16px;
 }
-
-.phone-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.15);
-  border-radius: 3px;
+.phone-carousel > * {
+  scroll-snap-align: start;
+  flex-shrink: 0;
 }
 
 /* ============================================

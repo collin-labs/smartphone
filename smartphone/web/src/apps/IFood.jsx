@@ -371,7 +371,7 @@ export default function IFood({ onNavigate }) {
 
       <div style={{ flex: 1, overflowY: "auto" }}>
         {/* Categories (V0 SVG icons) */}
-        <div style={{ display: "flex", gap: 12, padding: "16px", overflowX: "auto" }}>
+        <div style={{ display: "flex", gap: 12, padding: "16px", overflowX: "auto", scrollSnapType: "x proximity", WebkitOverflowScrolling: "touch" }}>
           {CATEGORIES.map((cat) => (
             <button key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.name ? null : cat.name)} style={{
               display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
