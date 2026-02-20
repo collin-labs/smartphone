@@ -13,6 +13,85 @@
 
 SELECT 1;
 
+-- ============================================
+-- LIMPEZA: Dropar tabelas antigas (colunas podem estar erradas)
+-- ATENÇÃO: Isso APAGA todos os dados existentes!
+-- Só execute se você quer uma instalação limpa.
+-- ============================================
+
+SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS smartphone_youtube_history;
+DROP TABLE IF EXISTS smartphone_youtube_favorites;
+DROP TABLE IF EXISTS smartphone_youtube_videos;
+DROP TABLE IF EXISTS smartphone_youtube_channels;
+DROP TABLE IF EXISTS smartphone_linkedin_connections;
+DROP TABLE IF EXISTS smartphone_linkedin_applications;
+DROP TABLE IF EXISTS smartphone_linkedin_jobs;
+DROP TABLE IF EXISTS smartphone_linkedin_likes;
+DROP TABLE IF EXISTS smartphone_linkedin_posts;
+DROP TABLE IF EXISTS smartphone_linkedin_profiles;
+
+DROP TABLE IF EXISTS smartphone_spotify_songs;
+DROP TABLE IF EXISTS smartphone_spotify_playlists;
+DROP TABLE IF EXISTS smartphone_gallery;
+DROP TABLE IF EXISTS smartphone_notes;
+DROP TABLE IF EXISTS smartphone_discord_messages;
+DROP TABLE IF EXISTS smartphone_discord_members;
+DROP TABLE IF EXISTS smartphone_discord_channels;
+DROP TABLE IF EXISTS smartphone_discord_servers;
+DROP TABLE IF EXISTS smartphone_yellowpages;
+DROP TABLE IF EXISTS smartphone_weazel_articles;
+DROP TABLE IF EXISTS smartphone_tor_store;
+DROP TABLE IF EXISTS smartphone_tor_messages;
+DROP TABLE IF EXISTS smartphone_marketplace;
+DROP TABLE IF EXISTS smartphone_ifood_menu_items;
+DROP TABLE IF EXISTS smartphone_ifood_restaurants;
+DROP TABLE IF EXISTS smartphone_ifood_orders;
+DROP TABLE IF EXISTS smartphone_waze_reports;
+DROP TABLE IF EXISTS smartphone_waze_history;
+DROP TABLE IF EXISTS smartphone_uber_rides;
+DROP TABLE IF EXISTS smartphone_paypal_transactions;
+DROP TABLE IF EXISTS smartphone_bank_transactions;
+DROP TABLE IF EXISTS smartphone_grindr_messages;
+DROP TABLE IF EXISTS smartphone_grindr_chats;
+DROP TABLE IF EXISTS smartphone_grindr_taps;
+DROP TABLE IF EXISTS smartphone_grindr_profiles;
+DROP TABLE IF EXISTS smartphone_tinder_messages;
+DROP TABLE IF EXISTS smartphone_tinder_matches;
+DROP TABLE IF EXISTS smartphone_tinder_swipes;
+DROP TABLE IF EXISTS smartphone_tinder_profiles;
+DROP TABLE IF EXISTS smartphone_tiktok_follows;
+DROP TABLE IF EXISTS smartphone_tiktok_comments;
+DROP TABLE IF EXISTS smartphone_tiktok_likes;
+DROP TABLE IF EXISTS smartphone_tiktok_videos;
+DROP TABLE IF EXISTS smartphone_tiktok_profiles;
+DROP TABLE IF EXISTS smartphone_twitter_likes;
+DROP TABLE IF EXISTS smartphone_twitter_tweets;
+DROP TABLE IF EXISTS smartphone_twitter_profiles;
+DROP TABLE IF EXISTS smartphone_instagram_stories;
+DROP TABLE IF EXISTS smartphone_instagram_follows;
+DROP TABLE IF EXISTS smartphone_instagram_comments;
+DROP TABLE IF EXISTS smartphone_instagram_likes;
+DROP TABLE IF EXISTS smartphone_instagram_posts;
+DROP TABLE IF EXISTS smartphone_instagram_profiles;
+DROP TABLE IF EXISTS smartphone_whatsapp_group_members;
+DROP TABLE IF EXISTS smartphone_whatsapp_messages;
+DROP TABLE IF EXISTS smartphone_whatsapp_participants;
+DROP TABLE IF EXISTS smartphone_whatsapp_chats;
+DROP TABLE IF EXISTS smartphone_sms_messages;
+DROP TABLE IF EXISTS smartphone_sms_participants;
+DROP TABLE IF EXISTS smartphone_sms_conversations;
+DROP TABLE IF EXISTS smartphone_service_calls;
+DROP TABLE IF EXISTS smartphone_calls;
+DROP TABLE IF EXISTS smartphone_appstore;
+DROP TABLE IF EXISTS smartphone_blocked;
+DROP TABLE IF EXISTS smartphone_contacts;
+DROP TABLE IF EXISTS smartphone_profiles;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+
 CREATE TABLE IF NOT EXISTS smartphone_profiles (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL UNIQUE,
@@ -704,7 +783,7 @@ CREATE TABLE IF NOT EXISTS smartphone_spotify_songs (
 -- =====================
 -- CORE: Perfis dos jogadores de teste
 -- =====================
-INSERT INTO smartphone_profiles (id, user_id, phone_number) VALUES
+INSERT IGNORE INTO smartphone_profiles (id, user_id, phone_number) VALUES
 (1, 1, '555-0001'),
 (2, 2, '555-0002'),
 (3, 3, '555-0003'),
@@ -719,7 +798,7 @@ INSERT INTO smartphone_profiles (id, user_id, phone_number) VALUES
 -- =====================
 -- CONTATOS (para testar Contacts, WhatsApp, SMS, Phone)
 -- =====================
-INSERT INTO smartphone_contacts (user_id, contact_phone, contact_name) VALUES
+INSERT IGNORE INTO smartphone_contacts (user_id, contact_phone, contact_name) VALUES
 (1, '555-0002', 'Maria Santos'),
 (1, '555-0003', 'João Grau'),
 (1, '555-0004', 'Ana Belle'),
@@ -737,7 +816,7 @@ INSERT INTO smartphone_contacts (user_id, contact_phone, contact_name) VALUES
 -- =====================
 -- CHAMADAS (para testar Phone > Histórico)
 -- =====================
-INSERT INTO smartphone_calls (caller_phone, receiver_phone, status, duration, is_anonymous) VALUES
+INSERT IGNORE INTO smartphone_calls (caller_phone, receiver_phone, status, duration, is_anonymous) VALUES
 ('555-0001', '555-0002', 'answered', 124, 0),
 ('555-0003', '555-0001', 'missed', 0, 0),
 ('555-0001', '555-0007', 'answered', 340, 0),
@@ -751,12 +830,12 @@ INSERT INTO smartphone_calls (caller_phone, receiver_phone, status, duration, is
 -- =====================
 -- SMS (para testar SMS > Lista + Chat)
 -- =====================
-INSERT INTO smartphone_sms_conversations (id, is_group) VALUES (1, 0), (2, 0), (3, 0);
-INSERT INTO smartphone_sms_participants (conversation_id, phone, unread) VALUES
+INSERT IGNORE INTO smartphone_sms_conversations (id, is_group) VALUES (1, 0), (2, 0), (3, 0);
+INSERT IGNORE INTO smartphone_sms_participants (conversation_id, phone, unread_count) VALUES
 (1, '555-0001', 0), (1, '555-0002', 2),
 (2, '555-0001', 0), (2, '555-0008', 0),
 (3, '555-0001', 0), (3, '555-0010', 1);
-INSERT INTO smartphone_sms_messages (conversation_id, sender_phone, message) VALUES
+INSERT IGNORE INTO smartphone_sms_messages (conversation_id, sender_phone, message) VALUES
 (1, '555-0002', 'E aí Carlos, beleza?'),
 (1, '555-0001', 'Tudo certo Maria! E vc?'),
 (1, '555-0002', 'Bora pro Bahama Mamas hj?'),
@@ -772,21 +851,21 @@ INSERT INTO smartphone_sms_messages (conversation_id, sender_phone, message) VAL
 -- =====================
 -- WHATSAPP (para testar WhatsApp > Conversas + Chat + Grupo)
 -- =====================
-INSERT INTO smartphone_whatsapp_chats (id, type, is_group, group_name, created_by) VALUES
+INSERT IGNORE INTO smartphone_whatsapp_chats (id, type, is_group, group_name, created_by) VALUES
 (1, 'private', 0, NULL, NULL),
 (2, 'private', 0, NULL, NULL),
 (3, 'group', 1, 'Grupo da Firma', 1),
 (4, 'private', 0, NULL, NULL),
 (5, 'private', 0, NULL, NULL),
 (6, 'group', 1, 'Churrasco Sábado', 2);
-INSERT INTO smartphone_whatsapp_participants (chat_id, phone, unread_count) VALUES
+INSERT IGNORE INTO smartphone_whatsapp_participants (chat_id, phone, unread_count) VALUES
 (1, '555-0001', 0), (1, '555-0002', 3),
 (2, '555-0001', 0), (2, '555-0003', 1),
 (3, '555-0001', 0), (3, '555-0002', 0), (3, '555-0003', 0), (3, '555-0005', 0),
 (4, '555-0001', 0), (4, '555-0004', 0),
 (5, '555-0001', 0), (5, '555-0007', 0),
 (6, '555-0001', 0), (6, '555-0002', 0), (6, '555-0005', 0), (6, '555-0006', 0);
-INSERT INTO smartphone_whatsapp_messages (chat_id, sender_phone, sender_name, message, type, is_read) VALUES
+INSERT IGNORE INTO smartphone_whatsapp_messages (chat_id, sender_phone, sender_name, message, type, is_read) VALUES
 (1, '555-0002', 'Maria Santos', 'Oi! Tudo bem?', 'text', 1),
 (1, '555-0001', 'Carlos Silva', 'Tudo ótimo! E vc?', 'text', 1),
 (1, '555-0002', 'Maria Santos', 'Viu o que aconteceu no Bahama Mamas ontem?', 'text', 1),
@@ -813,7 +892,7 @@ INSERT INTO smartphone_whatsapp_messages (chat_id, sender_phone, sender_name, me
 -- =====================
 -- INSTAGRAM (para testar Feed + Stories + Perfil + Comentários)
 -- =====================
-INSERT INTO smartphone_instagram_profiles (id, user_id, username, name, bio, avatar) VALUES
+INSERT IGNORE INTO smartphone_instagram_profiles (id, user_id, username, name, bio, avatar) VALUES
 (1, 1, 'carlos_silva', 'Carlos Silva', 'Empreendedor | Los Santos', ''),
 (2, 2, 'maria_ls', 'Maria Santos', 'Festeira profissional 🎉', ''),
 (3, 3, 'joao_grau', 'João Grau', 'Grau é meu sobrenome 🏎️', ''),
@@ -825,7 +904,7 @@ INSERT INTO smartphone_instagram_profiles (id, user_id, username, name, bio, ava
 (9, 9, 'adv_paula', 'Adv. Paula', 'Direito Criminal & Civil ⚖️', ''),
 (10, 10, 'mecanico_ze', 'Mecânico Zé', 'LS Customs | Tunagem | Reparo', '');
 
-INSERT INTO smartphone_instagram_posts (id, profile_id, image, caption) VALUES
+INSERT IGNORE INTO smartphone_instagram_posts (id, profile_id, image, caption) VALUES
 (1, 2, '', 'Noite perfeita no Bahama Mamas! 🍸🎶'),
 (2, 3, '', 'Novo carro chegou! V8 turbinado 🔥 #grau'),
 (3, 4, '', 'Pôr do sol em Vespucci Beach. Los Santos nunca decepciona 🌅'),
@@ -842,12 +921,12 @@ INSERT INTO smartphone_instagram_posts (id, profile_id, image, caption) VALUES
 (14, 7, '', 'Antes e depois da tunagem. Ficou absurdo! 🤯'),
 (15, 9, '', 'Caso ganho! Justiça feita ⚖️');
 
-INSERT INTO smartphone_instagram_likes (profile_id, post_id) VALUES
+INSERT IGNORE INTO smartphone_instagram_likes (profile_id, post_id) VALUES
 (1,1),(1,3),(1,5),(2,2),(2,4),(2,7),(3,1),(3,5),(3,9),
 (4,1),(4,2),(4,6),(5,3),(5,7),(5,12),(6,1),(6,4),(6,8),
 (7,2),(7,10),(7,14),(8,7),(8,15),(9,1),(9,7),(10,2),(10,6);
 
-INSERT INTO smartphone_instagram_comments (post_id, profile_id, text) VALUES
+INSERT IGNORE INTO smartphone_instagram_comments (post_id, profile_id, text) VALUES
 (1, 1, 'Que foto linda! 😍'),
 (1, 3, 'Bora de novo semana que vem!'),
 (1, 4, 'Melhor festa de LS!'),
@@ -862,12 +941,12 @@ INSERT INTO smartphone_instagram_comments (post_id, profile_id, text) VALUES
 (12, 1, 'Motivação! 💪'),
 (14, 3, 'Ficou absurdo mesmo!');
 
-INSERT INTO smartphone_instagram_follows (follower_id, following_id) VALUES
+INSERT IGNORE INTO smartphone_instagram_follows (follower_id, following_id) VALUES
 (1,2),(1,3),(1,4),(1,5),(1,6),(1,7),(2,1),(2,3),(2,4),
 (3,1),(3,2),(3,7),(4,1),(4,2),(4,5),(5,1),(5,3),(5,4),
 (6,1),(6,2),(6,4),(7,1),(7,3),(7,10),(8,1),(9,1),(10,7);
 
-INSERT INTO smartphone_instagram_stories (profile_id, image, expires_at) VALUES
+INSERT IGNORE INTO smartphone_instagram_stories (profile_id, image, expires_at) VALUES
 (2, '', DATE_ADD(NOW(), INTERVAL 20 HOUR)),
 (3, '', DATE_ADD(NOW(), INTERVAL 18 HOUR)),
 (5, '', DATE_ADD(NOW(), INTERVAL 15 HOUR)),
@@ -877,7 +956,7 @@ INSERT INTO smartphone_instagram_stories (profile_id, image, expires_at) VALUES
 -- =====================
 -- TWITTER (para testar Feed + Perfil + Tweets)
 -- =====================
-INSERT INTO smartphone_twitter_profiles (id, user_id, username, display_name, bio, verified) VALUES
+INSERT IGNORE INTO smartphone_twitter_profiles (id, user_id, username, display_name, bio, verified) VALUES
 (1, 1, 'carlos_dev', 'Carlos Silva', 'CEO Agência Soluções Digitais | LS', 0),
 (2, 2, 'maria_ls', 'Maria Santos', 'Curtindo a vida em Los Santos 🌴', 0),
 (3, 3, 'joaograu', 'João Grau', 'Velocidade é meu estilo 🏎️', 0),
@@ -886,7 +965,7 @@ INSERT INTO smartphone_twitter_profiles (id, user_id, username, display_name, bi
 (6, 8, 'dr_marcos', 'Dr. Marcos Lima', 'Médico | Pillbox Hill Medical Center', 1),
 (7, 9, 'adv_paula_s', 'Adv. Paula Santos', 'Justiça para todos ⚖️ | OAB/LS', 1);
 
-INSERT INTO smartphone_twitter_tweets (id, profile_id, content, image) VALUES
+INSERT IGNORE INTO smartphone_twitter_tweets (id, profile_id, content, image) VALUES
 (1, 1, 'Novo projeto da agência saindo do forno! 🔥 Em breve mais novidades.', ''),
 (2, 2, 'Bahama Mamas ontem foi INSANO! Melhor noite do ano 🎶', ''),
 (3, 3, 'Quem quer racha na highway hoje? 🏁', ''),
@@ -898,20 +977,20 @@ INSERT INTO smartphone_twitter_tweets (id, profile_id, content, image) VALUES
 (9, 3, 'Motor V8 biturbo instalado. 850cv. Os vizinhos vão amar. 😈', ''),
 (10, 2, 'Procurando personal trainer em LS. Alguém indica?', '');
 
-INSERT INTO smartphone_twitter_likes (profile_id, tweet_id) VALUES
+INSERT IGNORE INTO smartphone_twitter_likes (profile_id, tweet_id) VALUES
 (1,2),(1,4),(2,1),(2,5),(3,1),(3,8),(4,2),(4,8),(5,2),(5,3),(6,7),(7,1);
 
 -- =====================
 -- TIKTOK (para testar Feed + Perfil + Vídeos)
 -- =====================
-INSERT INTO smartphone_tiktok_profiles (id, phone, username, display_name, bio, followers_count, following_count) VALUES
+INSERT IGNORE INTO smartphone_tiktok_profiles (id, phone, username, display_name, bio, followers_count, following_count) VALUES
 (1, '555-0001', 'carlos.dev', 'Carlos Silva', 'Tech + RP', 1250, 340),
 (2, '555-0002', 'maria.ls', 'Maria Santos', 'Festas & Vibes 🎉', 8900, 120),
 (3, '555-0003', 'joao.grau', 'João Grau', 'Grau nas ruas de LS 🏎️', 15600, 89),
 (4, '555-0004', 'ana.belle', 'Ana Belle', 'Fotografia & Lifestyle', 5400, 230),
 (5, '555-0005', 'pedro.fit', 'Pedro Fitness', 'Treino & Motivação 💪', 22000, 150);
 
-INSERT INTO smartphone_tiktok_videos (id, profile_id, caption, likes_count, comments_count, views_count) VALUES
+INSERT IGNORE INTO smartphone_tiktok_videos (id, profile_id, caption, likes_count, comments_count, views_count) VALUES
 (1, 3, 'De 0 a 200 no Elegy 🏎️ #grau #drift', 4500, 230, 45000),
 (2, 2, 'Tutorial de makeup pra festa 💄 #festeira', 2300, 120, 18000),
 (3, 5, 'Treino de peito completo em 15min ⏱️ #gym', 8900, 450, 89000),
@@ -921,10 +1000,10 @@ INSERT INTO smartphone_tiktok_videos (id, profile_id, caption, likes_count, comm
 (7, 2, 'Bahama Mamas vlog 🍸 #nightlife', 5600, 340, 56000),
 (8, 5, 'Dieta de cutting: o que eu como num dia 🥗', 6700, 280, 67000);
 
-INSERT INTO smartphone_tiktok_likes (profile_id, video_id) VALUES
+INSERT IGNORE INTO smartphone_tiktok_likes (profile_id, video_id) VALUES
 (1,1),(1,2),(1,4),(2,3),(2,5),(3,2),(3,6),(4,1),(4,3),(5,1),(5,4);
 
-INSERT INTO smartphone_tiktok_comments (video_id, profile_id, comment) VALUES
+INSERT IGNORE INTO smartphone_tiktok_comments (video_id, profile_id, comment) VALUES
 (1, 1, 'Que carro insano! 🔥'),
 (1, 2, 'Eu no banco do passageiro kkk'),
 (3, 1, 'Motivação pura! 💪'),
@@ -932,13 +1011,13 @@ INSERT INTO smartphone_tiktok_comments (video_id, profile_id, comment) VALUES
 (5, 4, 'Melhor fuga que já vi kkkkk'),
 (5, 1, 'O cara é brabo demais');
 
-INSERT INTO smartphone_tiktok_follows (follower_id, following_id) VALUES
+INSERT IGNORE INTO smartphone_tiktok_follows (follower_id, following_id) VALUES
 (1,2),(1,3),(1,4),(1,5),(2,1),(2,3),(3,1),(3,5),(4,1),(4,2),(5,1),(5,3);
 
 -- =====================
 -- TINDER (para testar Discover + Matches + Chat)
 -- =====================
-INSERT INTO smartphone_tinder_profiles (id, phone, name, age, bio, photos, gender, interest) VALUES
+INSERT IGNORE INTO smartphone_tinder_profiles (id, phone, name, age, bio, photos, gender, interest) VALUES
 (1, '555-0001', 'Carlos', 26, 'Empreendedor, apaixonado por tecnologia e carros. Procurando alguém pra curtir LS juntos 🌆', '[]', 'male', 'female'),
 (2, '555-0002', 'Maria', 24, 'Amo festas, praia e boas companhias. Me leva pro Bahama Mamas? 🍸', '[]', 'female', 'male'),
 (3, '555-0004', 'Ana', 23, 'Fotógrafa. Vou te levar pros melhores cenários de LS 📸', '[]', 'female', 'male'),
@@ -947,19 +1026,19 @@ INSERT INTO smartphone_tinder_profiles (id, phone, name, age, bio, photos, gende
 (6, '555-0005', 'Pedro', 28, 'Personal trainer. Vamos treinar juntos? 💪', '[]', 'male', 'female'),
 (7, '555-0009', 'Paula', 30, 'Advogada. Inteligência é o melhor shape ⚖️', '[]', 'female', 'male');
 
-INSERT INTO smartphone_tinder_swipes (swiper_id, swiped_id, direction) VALUES
+INSERT IGNORE INTO smartphone_tinder_swipes (swiper_id, swiped_id, direction) VALUES
 (1, 2, 'right'), (2, 1, 'right'),
 (1, 3, 'right'), (3, 1, 'right'),
 (1, 4, 'right'),
 (5, 2, 'right'), (2, 5, 'left'),
 (6, 4, 'right'), (4, 6, 'right');
 
-INSERT INTO smartphone_tinder_matches (id, profile1_id, profile2_id) VALUES
+INSERT IGNORE INTO smartphone_tinder_matches (id, profile1_id, profile2_id) VALUES
 (1, 1, 2),
 (2, 1, 3),
 (3, 4, 6);
 
-INSERT INTO smartphone_tinder_messages (match_id, sender_id, message) VALUES
+INSERT IGNORE INTO smartphone_tinder_messages (match_id, sender_id, message) VALUES
 (1, 2, 'Oi Carlos! Vi que vc é empreendedor, conta mais! 😊'),
 (1, 1, 'Oi Maria! Tenho uma agência digital aqui em LS. E vc?'),
 (1, 2, 'Eu sou festeira profissional kkk brincadeira, trabalho com eventos'),
@@ -974,7 +1053,7 @@ INSERT INTO smartphone_tinder_messages (match_id, sender_id, message) VALUES
 -- =====================
 -- GRINDR (para testar Grid + Perfis + Chat + Taps — INCLUSÃO!)
 -- =====================
-INSERT INTO smartphone_grindr_profiles (id, user_id, name, bio, avatar) VALUES
+INSERT IGNORE INTO smartphone_grindr_profiles (id, user_id, name, bio, avatar) VALUES
 (1, 11, 'Lucas M.', 'Discreto. Curto academia e praia. LS nativo 🏖️', ''),
 (2, 12, 'Thiago R.', 'DJ nos fins de semana 🎧 Bora curtir?', ''),
 (3, 13, 'Rafael S.', 'Chef de cozinha 🍳 Faço um jantar pra vc', ''),
@@ -984,15 +1063,15 @@ INSERT INTO smartphone_grindr_profiles (id, user_id, name, bio, avatar) VALUES
 (7, 17, 'Matheus P.', 'Advogado de dia, bartender à noite 🍹', ''),
 (8, 18, 'Gustavo N.', 'Fotógrafo. Posso te fotografar? 📸', '');
 
-INSERT INTO smartphone_grindr_taps (sender_id, target_id) VALUES
+INSERT IGNORE INTO smartphone_grindr_taps (sender_id, target_id) VALUES
 (2, 1), (3, 1), (5, 1), (4, 2), (6, 3), (1, 4), (7, 5);
 
-INSERT INTO smartphone_grindr_chats (id, user1_id, user1_name, user1_avatar, user2_id, user2_name, user2_avatar, last_message) VALUES
+INSERT IGNORE INTO smartphone_grindr_chats (id, user1_id, user1_name, user1_avatar, user2_id, user2_name, user2_avatar, last_message) VALUES
 (1, 11, 'Lucas M.', '', 12, 'Thiago R.', '', 'Bora pro Bahama Mamas hj? 🎧'),
 (2, 11, 'Lucas M.', '', 13, 'Rafael S.', '', 'Aquele jantar tá de pé? 🍳'),
 (3, 14, 'André L.', '', 15, 'Bruno K.', '', 'Adorei sua última tattoo!');
 
-INSERT INTO smartphone_grindr_messages (chat_id, sender_id, message) VALUES
+INSERT IGNORE INTO smartphone_grindr_messages (chat_id, sender_id, message) VALUES
 (1, 12, 'E aí Lucas! Tudo bem?'),
 (1, 11, 'Tudo ótimo Thiago! E vc?'),
 (1, 12, 'De boa! Vou tocar no Bahama Mamas hj, bora?'),
@@ -1009,7 +1088,7 @@ INSERT INTO smartphone_grindr_messages (chat_id, sender_id, message) VALUES
 -- =====================
 -- BANCO / FINANCEIRO (para testar Bank + PayPal)
 -- =====================
-INSERT INTO smartphone_bank_transactions (from_phone, to_phone, amount, type, description) VALUES
+INSERT IGNORE INTO smartphone_bank_transactions (from_phone, to_phone, amount, type, description) VALUES
 ('555-0001', '555-0007', 15000.00, 'pix', 'Pagamento motor V8'),
 ('555-0002', '555-0001', 500.00, 'pix', 'Racha da festa'),
 ('555-0001', '555-0006', 2500.00, 'pix', 'Compra roupa'),
@@ -1018,7 +1097,7 @@ INSERT INTO smartphone_bank_transactions (from_phone, to_phone, amount, type, de
 ('555-0005', '555-0001', 200.00, 'pix', 'Personal treino'),
 ('555-0001', '555-0010', 4500.00, 'pix', 'Mecânico - conserto');
 
-INSERT INTO smartphone_paypal_transactions (sender_id, sender_phone, receiver_id, receiver_phone, amount, note) VALUES
+INSERT IGNORE INTO smartphone_paypal_transactions (sender_id, sender_phone, receiver_id, receiver_phone, amount, note) VALUES
 (1, '555-0001', 6, '555-0006', 1200.00, 'Tênis importado'),
 (2, '555-0002', 1, '555-0001', 300.00, 'Ingresso festa'),
 (3, '555-0003', 7, '555-0007', 8000.00, 'Peça importada JDM');
@@ -1026,7 +1105,7 @@ INSERT INTO smartphone_paypal_transactions (sender_id, sender_phone, receiver_id
 -- =====================
 -- UBER (para testar Uber > Histórico + Corrida)
 -- =====================
-INSERT INTO smartphone_uber_rides (passenger_id, passenger_phone, driver_id, driver_phone, destination, ride_type, estimated_price, price, status, rating) VALUES
+INSERT IGNORE INTO smartphone_uber_rides (passenger_id, passenger_phone, driver_id, driver_phone, destination, ride_type, estimated_price, price, status, rating) VALUES
 (1, '555-0001', 3, '555-0003', 'Bahama Mamas', 'comfort', 2500, 2500, 'completed', 5),
 (1, '555-0001', 5, '555-0005', 'Pillbox Hill Medical', 'economy', 1800, 1800, 'completed', 4),
 (1, '555-0001', 3, '555-0003', 'Maze Bank Tower', 'premium', 3500, 3500, 'completed', 5),
@@ -1035,16 +1114,16 @@ INSERT INTO smartphone_uber_rides (passenger_id, passenger_phone, driver_id, dri
 -- =====================
 -- WAZE (para testar Waze > Histórico + Alertas)
 -- =====================
-INSERT INTO smartphone_waze_history (user_id, destination) VALUES
+INSERT IGNORE INTO smartphone_waze_history (user_id, destination) VALUES
 (1, 'Bahama Mamas'), (1, 'Pillbox Hill'), (1, 'LS Customs'),
 (1, 'Maze Bank Tower'), (1, 'Vespucci Beach');
-INSERT INTO smartphone_waze_reports (user_id, type) VALUES
+INSERT IGNORE INTO smartphone_waze_reports (user_id, type) VALUES
 (1, 'police'), (2, 'accident'), (3, 'traffic'), (1, 'hazard');
 
 -- =====================
 -- IFOOD (Restaurantes + Menu + Pedidos)
 -- =====================
-INSERT INTO smartphone_ifood_restaurants (id, name, category, rating, time, fee, emoji, promo) VALUES
+INSERT IGNORE INTO smartphone_ifood_restaurants (id, name, category, rating, time, fee, emoji, promo) VALUES
 (1, 'Burger King LS', 'Lanches', 4.5, '25-35', 599, 'B', '20% OFF'),
 (2, 'Pizza Hut Santos', 'Pizza', 4.7, '30-45', 0, 'P', NULL),
 (3, 'Sushi Los Santos', 'Japonesa', 4.8, '40-55', 799, 'S', NULL),
@@ -1054,7 +1133,7 @@ INSERT INTO smartphone_ifood_restaurants (id, name, category, rating, time, fee,
 (7, 'Wok Express', 'Chinesa', 4.3, '30-40', 699, 'W', '10% OFF'),
 (8, 'Tacos El Gringo', 'Mexicana', 4.1, '25-35', 499, 'T', NULL);
 
-INSERT INTO smartphone_ifood_menu_items (restaurant_id, name, price, `desc`, popular) VALUES
+INSERT IGNORE INTO smartphone_ifood_menu_items (restaurant_id, name, price, `desc`, popular) VALUES
 (1, 'Whopper', 2990, 'Pão, carne, queijo, alface, tomate', 1),
 (1, 'Chicken Crispy', 2490, 'Frango empanado crocante', 0),
 (1, 'Onion Rings', 1490, 'Anéis de cebola', 0),
@@ -1079,14 +1158,14 @@ INSERT INTO smartphone_ifood_menu_items (restaurant_id, name, price, `desc`, pop
 (8, 'Tacos (3un)', 2290, 'Carne, guacamole, pico de gallo', 1),
 (8, 'Burrito grande', 2990, 'Carne, feijão, arroz, queijo', 0);
 
-INSERT INTO smartphone_ifood_orders (user_id, restaurant, items, total, fee, status) VALUES
+INSERT IGNORE INTO smartphone_ifood_orders (user_id, restaurant, items, total, fee, status) VALUES
 (1, 'Burger King LS', '[{"name":"Whopper","qty":2,"price":2990},{"name":"Milk Shake","qty":1,"price":1690}]', 7670, 599, 'delivered'),
 (1, 'Sushi Los Santos', '[{"name":"Combo 20 peças","qty":1,"price":5990}]', 5990, 799, 'delivered');
 
 -- =====================
 -- MARKETPLACE (para testar Home + Detalhes + Meus anúncios)
 -- =====================
-INSERT INTO smartphone_marketplace (seller_phone, title, description, price, category, image, status) VALUES
+INSERT IGNORE INTO smartphone_marketplace (seller_phone, title, description, price, category, image, status) VALUES
 ('555-0003', 'Elegy RH8 Tunado', 'Motor V6 turbo, pintura metálica azul, rodas importadas. Só venda!', 150000, 'Veículos', '', 'active'),
 ('555-0004', 'iPhone 15 Pro Max', 'Novo na caixa, lacrado. Garantia 1 ano.', 8500, 'Eletrônicos', '', 'active'),
 ('555-0005', 'Kit Musculação Completo', 'Banco, barra, anilhas até 100kg. Pouco uso.', 3500, 'Esportes', '', 'active'),
@@ -1099,7 +1178,7 @@ INSERT INTO smartphone_marketplace (seller_phone, title, description, price, cat
 -- =====================
 -- TOR / DEEP WEB (para testar Market + Chat)
 -- =====================
-INSERT INTO smartphone_tor_store (name, price, available) VALUES
+INSERT IGNORE INTO smartphone_tor_store (name, price, available) VALUES
 ('Lockpick Set', 500, 1),
 ('Documento Falso', 2000, 1),
 ('Escuta Telefônica', 1500, 1),
@@ -1109,7 +1188,7 @@ INSERT INTO smartphone_tor_store (name, price, available) VALUES
 ('GPS Rastreador Mini', 3000, 1),
 ('Silenciador', 8000, 1);
 
-INSERT INTO smartphone_tor_messages (channel, user_id, alias, message) VALUES
+INSERT IGNORE INTO smartphone_tor_messages (channel, user_id, alias, message) VALUES
 ('general', 10, 'Shadow', 'Alguém tem lockpick?'),
 ('general', 11, 'Ghost', 'Tenho sim, fala no PV'),
 ('general', 12, 'Phantom', 'Placa clonada, alguém?'),
@@ -1118,7 +1197,7 @@ INSERT INTO smartphone_tor_messages (channel, user_id, alias, message) VALUES
 -- =====================
 -- WEAZEL NEWS (para testar Feed + Breaking News)
 -- =====================
-INSERT INTO smartphone_weazel_articles (author_id, author_name, title, body, category, is_breaking) VALUES
+INSERT IGNORE INTO smartphone_weazel_articles (author_id, author_name, title, body, category, is_breaking) VALUES
 (1, 'Sandra Lee', 'Tiroteio em Vinewood Boulevard', 'A polícia de Los Santos respondeu a um chamado de tiroteio na região de Vinewood Boulevard na madrugada de hoje. Três suspeitos foram detidos e encaminhados à delegacia central. Não houve vítimas fatais.', 'Cidade', 1),
 (1, 'Tom Rivers', 'Nova ponte ligando Paleto Bay será inaugurada', 'O prefeito anunciou a construção de uma nova ponte conectando Paleto Bay ao centro de Los Santos, com previsão de conclusão em 6 meses. O investimento é de R$ 2 milhões.', 'Política', 0),
 (2, 'Maria Costa', 'Preços de imóveis em alta no centro', 'O mercado imobiliário de Los Santos registrou alta de 15% nos preços de apartamentos na região central nos últimos 3 meses. Especialistas apontam crescimento da cidade.', 'Economia', 0),
@@ -1128,7 +1207,7 @@ INSERT INTO smartphone_weazel_articles (author_id, author_name, title, body, cat
 -- =====================
 -- YELLOW PAGES (para testar Lista + Anúncios)
 -- =====================
-INSERT INTO smartphone_yellowpages (user_id, name, description, category, phone) VALUES
+INSERT IGNORE INTO smartphone_yellowpages (user_id, name, description, category, phone) VALUES
 (1, 'LS Customs - Tunagem', 'Tunagem completa, pintura, blindagem. Orçamento grátis!', 'Mecânica', '555-0100'),
 (1, 'Agência Soluções Digitais', 'Sites, apps e sistemas. Orçamento online.', 'Tecnologia', '555-0001'),
 (2, 'Dr. Marcos - Clínica 24h', 'Atendimento 24h. Emergências e consultas.', 'Saúde', '555-0008'),
@@ -1142,12 +1221,12 @@ INSERT INTO smartphone_yellowpages (user_id, name, description, category, phone)
 -- =====================
 -- DISCORD (para testar Servidores + Canais + Chat)
 -- =====================
-INSERT INTO smartphone_discord_servers (id, name, icon, owner_id) VALUES
+INSERT IGNORE INTO smartphone_discord_servers (id, name, icon, owner_id) VALUES
 (1, 'Los Santos RP', '🎮', 1),
 (2, 'Mecânicos LS', '🔧', 7),
 (3, 'Polícia LS', '🚔', 8);
 
-INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES
+INSERT IGNORE INTO smartphone_discord_channels (server_id, name, type, position) VALUES
 (1, 'geral', 'text', 1),
 (1, 'anúncios', 'announcements', 2),
 (1, 'memes', 'text', 3),
@@ -1156,7 +1235,7 @@ INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES
 (3, 'ocorrências', 'text', 1),
 (3, 'avisos', 'announcements', 2);
 
-INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES
+INSERT IGNORE INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES
 (1, 1, 'Admin', '#FF6B6B'),
 (1, 2, 'Membro', '#4ECDC4'),
 (1, 3, 'Membro', '#4ECDC4'),
@@ -1167,7 +1246,7 @@ INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VA
 (3, 8, 'Chefe', '#FF6B6B'),
 (3, 1, 'Civil', '#4ECDC4');
 
-INSERT INTO smartphone_discord_messages (channel_id, user_id, username, role_color, message) VALUES
+INSERT IGNORE INTO smartphone_discord_messages (channel_id, user_id, username, role_color, message) VALUES
 (1, 1, 'carlos_silva', '#FF6B6B', 'Bem-vindos ao servidor! Leiam as regras.'),
 (1, 2, 'maria_ls', '#4ECDC4', 'Oi pessoal! 👋'),
 (1, 3, 'joao_grau', '#4ECDC4', 'Salve salve!'),
@@ -1179,7 +1258,7 @@ INSERT INTO smartphone_discord_messages (channel_id, user_id, username, role_col
 -- =====================
 -- NOTAS (para testar Notes > Lista + Editor)
 -- =====================
-INSERT INTO smartphone_notes (phone, title, content) VALUES
+INSERT IGNORE INTO smartphone_notes (phone, title, content) VALUES
 ('555-0001', 'Lista de compras', '- Arroz\n- Feijão\n- Carne\n- Refrigerante\n- Pão'),
 ('555-0001', 'Senhas importantes', 'Banco: ****\nEmail: ****\nWifi casa: losantos123'),
 ('555-0001', 'Ideias pro negócio', '1. Abrir loja no marketplace\n2. Vender carros importados\n3. Delivery de comida\n4. Segurança privada'),
@@ -1190,14 +1269,14 @@ INSERT INTO smartphone_notes (phone, title, content) VALUES
 -- =====================
 -- SPOTIFY (playlists + músicas)
 -- =====================
-INSERT INTO smartphone_spotify_playlists (id, name, cover, description) VALUES
+INSERT IGNORE INTO smartphone_spotify_playlists (id, name, cover, description) VALUES
 (1, 'Rap Nacional', '🎤', 'Os clássicos do rap BR'),
 (2, 'Trap BR', '🔥', 'Trap pesado nacional'),
 (3, 'Lo-Fi Beats', '🎧', 'Para relaxar e codar'),
 (4, 'Funk', '💃', 'Pancadão de LS'),
 (5, 'Rock Clássico', '🎸', 'Lendas do rock');
 
-INSERT INTO smartphone_spotify_songs (playlist_id, name, artist, dur, track_order) VALUES
+INSERT IGNORE INTO smartphone_spotify_songs (playlist_id, name, artist, dur, track_order) VALUES
 (1, 'Vida Loka Pt.2', 'Racionais MCs', '5:42', 1),
 (1, 'Negro Drama', 'Racionais MCs', '6:32', 2),
 (1, 'Diário de um Detento', 'Racionais MCs', '8:18', 3),
@@ -1219,7 +1298,7 @@ INSERT INTO smartphone_spotify_songs (playlist_id, name, artist, dur, track_orde
 -- =====================
 -- APPSTORE
 -- =====================
-INSERT INTO smartphone_appstore (user_id, installed_apps) VALUES
+INSERT IGNORE INTO smartphone_appstore (user_id, installed_apps) VALUES
 (1, '["instagram","whatsapp","ifood","twitter","tiktok","spotify","calculator","notes","camera","gallery","phone","sms","contacts","settings","bank","uber","marketplace"]');
 
 -- ============================================
@@ -1227,3 +1306,237 @@ INSERT INTO smartphone_appstore (user_id, installed_apps) VALUES
 -- Total: ~300 rows em 30+ tabelas
 -- Todos os apps testáveis com dados realistas
 -- ============================================
+
+-- ============================================
+-- LINKEDIN — App de Empregos e Networking RP
+-- ============================================
+
+SELECT 1;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    phone VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    headline VARCHAR(200) DEFAULT '',
+    bio TEXT DEFAULT '',
+    company VARCHAR(100) DEFAULT '',
+    position VARCHAR(100) DEFAULT '',
+    avatar VARCHAR(500) DEFAULT '',
+    connections_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_posts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    profile_id INT NOT NULL,
+    content TEXT NOT NULL,
+    likes_count INT DEFAULT 0,
+    comments_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_profile (profile_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_likes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    profile_id INT NOT NULL,
+    post_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_like (profile_id, post_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_jobs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    poster_id INT NOT NULL,
+    company VARCHAR(100) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT DEFAULT '',
+    salary_min INT DEFAULT 0,
+    salary_max INT DEFAULT 0,
+    location VARCHAR(100) DEFAULT 'Los Santos',
+    type ENUM('full-time','part-time','freelance','temporary') DEFAULT 'full-time',
+    status ENUM('open','closed','filled') DEFAULT 'open',
+    applicants_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_applications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    job_id INT NOT NULL,
+    applicant_id INT NOT NULL,
+    message TEXT DEFAULT '',
+    status ENUM('pending','accepted','rejected') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_job (job_id),
+    UNIQUE KEY uk_app (job_id, applicant_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_linkedin_connections (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    requester_id INT NOT NULL,
+    target_id INT NOT NULL,
+    status ENUM('pending','accepted','rejected') DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_conn (requester_id, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- === LinkedIn Seed Data ===
+
+INSERT IGNORE INTO smartphone_linkedin_profiles (id, phone, name, headline, bio, company, position, connections_count) VALUES
+(1, '555-0001', 'Carlos Silva', 'CEO & Fundador | Agência Soluções Digitais', 'Empreendedor com experiência em tecnologia e desenvolvimento de soluções digitais para Los Santos. Focado em inovação e crescimento.', 'Agência Soluções Digitais', 'CEO', 8),
+(2, '555-0002', 'Maria Santos', 'Event Manager | Bahama Mamas Entertainment', 'Organizo os melhores eventos de Los Santos. Mais de 50 eventos realizados com sucesso.', 'Bahama Mamas', 'Gerente de Eventos', 12),
+(3, '555-0003', 'João Silva', 'Street Racer & Import Specialist', 'Especialista em veículos de alta performance. Conexões com fornecedores internacionais de peças JDM e Euro.', 'Underground Racing LS', 'Piloto Principal', 5),
+(4, '555-0004', 'Ana Belle', 'Fotógrafa Profissional | Freelancer', 'Capturo os melhores momentos de Los Santos. Ensaios, eventos e paisagens. Portfolio disponível.', 'Freelancer', 'Fotógrafa', 15),
+(5, '555-0005', 'Pedro Martins', 'Personal Trainer Certificado | Iron Temple Gym', 'Transformo vidas através do fitness. +100 alunos atendidos. Especialista em hipertrofia e cutting.', 'Iron Temple Gym', 'Personal Trainer', 22),
+(6, '555-0006', 'Larissa Santos', 'Founder & CEO | Lari Fashion Store', 'Loja de roupas importadas e tênis originais. Representante oficial de marcas internacionais em LS.', 'Lari Fashion Store', 'CEO', 18),
+(7, '555-0007', 'Rafael Costa', 'Master Mechanic | Import Tuning Specialist', 'Certificado em tunagem JDM e Euro. Mais de 200 carros transformados. Motor swap, turbo, suspensão.', 'Rafa Tuner Import', 'Mecânico Chefe', 9),
+(8, '555-0008', 'Dr. Marcos Lima', 'Médico | Diretor Clínico Pillbox Hill Medical Center', 'CRM/LS ativo. Especialista em emergências e trauma. Atendimento 24h. Salvando vidas desde 2020.', 'Pillbox Hill Medical', 'Diretor Clínico', 30),
+(9, '555-0009', 'Paula Santos', 'Advogada Criminal & Civil | OAB/LS', 'Defesa criminal, contratos, direito civil. Taxa de sucesso de 87%. Consulta inicial gratuita.', 'Santos & Associados', 'Advogada Sênior', 25),
+(10, '555-0010', 'José Almeida', 'Gerente | LS Customs Official', 'A maior oficina mecânica de Los Santos. Tunagem, reparo, pintura e blindagem. Orçamento sem compromisso.', 'LS Customs', 'Gerente', 14);
+
+INSERT IGNORE INTO smartphone_linkedin_posts (id, profile_id, content, likes_count, comments_count) VALUES
+(1, 1, '🚀 Estamos contratando! A Agência Soluções Digitais está em busca de desenvolvedores para projetos inovadores em Los Santos. Se você manja de tecnologia, manda DM!', 24, 8),
+(2, 8, '🏥 Orgulho em anunciar: Pillbox Hill Medical Center agora atende 24h com equipe completa. Estamos contratando enfermeiros e paramédicos. Venha salvar vidas conosco!', 45, 12),
+(3, 5, '💪 Resultados falam mais que palavras. Meu aluno @joao_grau perdeu 15kg em 3 meses com meu programa de cutting. Quer ser o próximo? Agende sua avaliação!', 38, 15),
+(4, 9, '⚖️ IMPORTANTE: Novo decreto sobre porte de armas entra em vigor amanhã. Se você tem dúvidas sobre como isso afeta seus direitos, entre em contato. Consulta gratuita.', 52, 20),
+(5, 6, '👗 Coleção de verão chegou na Lari Fashion Store! Tênis importados, roupas de grife. Procuramos vendedoras para a nova filial em Vinewood. Interessadas, me chamem!', 30, 9),
+(6, 2, '🎉 Bahama Mamas está contratando! Precisamos de bartenders, seguranças e DJs para a temporada de verão. Experiência desejável mas não obrigatória. Salários competitivos!', 41, 18),
+(7, 7, '🔧 Acabei de finalizar um projeto insano: motor V8 biturbo com 850cv num Elegy RH8. Procurando aprendiz de mecânico que queira aprender tunagem de verdade.', 33, 11),
+(8, 4, '📸 Disponível para ensaios fotográficos esta semana! Locações: Vespucci Beach, Mount Chiliad, Vinewood Sign. Pacotes a partir de R$500. Portfólio no meu perfil.', 19, 6),
+(9, 10, '🔧 LS Customs está expandindo! Precisamos de mecânicos experientes e pintores automotivos. Salário + comissão. Melhor oficina de Los Santos, venha fazer parte!', 27, 7),
+(10, 1, '💡 Dica profissional: Em Los Santos, networking é tudo. Já contratei 3 pessoas através desta plataforma. Conectem-se, pessoal!', 35, 14);
+
+INSERT IGNORE INTO smartphone_linkedin_likes (profile_id, post_id) VALUES
+(1,2),(1,3),(1,4),(2,1),(2,3),(2,5),(3,1),(3,7),(4,1),(4,5),
+(5,1),(5,6),(6,1),(6,4),(7,1),(7,3),(8,1),(8,4),(9,1),(9,2),
+(10,1),(10,7),(1,6),(2,4),(3,5),(4,6),(5,7),(6,8),(7,9),(8,10);
+
+INSERT IGNORE INTO smartphone_linkedin_jobs (id, poster_id, company, title, description, salary_min, salary_max, location, type, status, applicants_count) VALUES
+(1, 1, 'Agência Soluções Digitais', 'Desenvolvedor Full-Stack', 'Buscamos dev com experiência em React, Node.js e banco de dados. Trabalho presencial no escritório em Vinewood.', 5000, 8000, 'Vinewood', 'full-time', 'open', 3),
+(2, 8, 'Pillbox Hill Medical', 'Enfermeiro(a)', 'Plantão 12h. Experiência em emergência desejável. Benefícios: plano de saúde, vale alimentação.', 3500, 5000, 'Pillbox Hill', 'full-time', 'open', 5),
+(3, 8, 'Pillbox Hill Medical', 'Paramédico', 'Atendimento pré-hospitalar. CNH categoria D obrigatória. Treinamento oferecido pela instituição.', 3000, 4500, 'Los Santos', 'full-time', 'open', 2),
+(4, 2, 'Bahama Mamas', 'Bartender', 'Preparar drinks, atender clientes VIP. Experiência em coquetelaria é um diferencial. Noturno.', 2000, 3500, 'Bahama Mamas', 'part-time', 'open', 8),
+(5, 2, 'Bahama Mamas', 'Segurança', 'Controle de entrada, segurança do estabelecimento. Porte físico e experiência em segurança privada.', 3000, 4000, 'Bahama Mamas', 'full-time', 'open', 4),
+(6, 6, 'Lari Fashion Store', 'Vendedora', 'Atendimento ao cliente, organização de vitrine, controle de estoque. Gostar de moda é essencial!', 1800, 2500, 'Vinewood', 'full-time', 'open', 6),
+(7, 7, 'Rafa Tuner Import', 'Aprendiz de Mecânico', 'Aprenda tunagem profissional. Sem experiência necessária, apenas vontade de aprender. Início imediato.', 1500, 2000, 'LS Customs', 'full-time', 'open', 3),
+(8, 10, 'LS Customs', 'Mecânico Experiente', 'Mínimo 2 anos de experiência. Motor, suspensão, freios. Salário + comissão por serviço.', 4000, 6000, 'LS Customs', 'full-time', 'open', 2),
+(9, 10, 'LS Customs', 'Pintor Automotivo', 'Pintura automotiva, envelopamento, detailing. Experiência comprovada.', 3000, 5000, 'LS Customs', 'full-time', 'open', 1),
+(10, 4, 'Freelancer', 'Assistente de Fotografia', 'Me ajude em ensaios e eventos. Equipamento fornecido. Horários flexíveis. Ótimo para aprender.', 1000, 2000, 'Los Santos', 'freelance', 'open', 2);
+
+INSERT IGNORE INTO smartphone_linkedin_applications (job_id, applicant_id, message, status) VALUES
+(1, 3, 'Tenho experiência com tecnologia e estou buscando nova oportunidade. Quando posso começar?', 'pending'),
+(1, 5, 'Sou autodidata em programação e gostaria de aprender mais na prática.', 'pending'),
+(4, 3, 'Tenho experiência servindo drinks em festas. Sou comunicativo e pontual.', 'accepted'),
+(4, 5, 'Procurando renda extra nos fins de semana. Tenho boa apresentação.', 'pending'),
+(7, 3, 'Sou apaixonado por carros e quero aprender tunagem profissional!', 'accepted'),
+(2, 4, 'Tenho curso técnico em enfermagem e experiência em pronto-socorro.', 'pending');
+
+INSERT IGNORE INTO smartphone_linkedin_connections (requester_id, target_id, status) VALUES
+(1, 2, 'accepted'), (1, 4, 'accepted'), (1, 5, 'accepted'), (1, 8, 'accepted'),
+(1, 9, 'accepted'), (2, 5, 'accepted'), (2, 6, 'accepted'), (2, 8, 'accepted'),
+(3, 7, 'accepted'), (3, 1, 'pending'), (4, 5, 'accepted'), (4, 6, 'accepted'),
+(5, 8, 'accepted'), (6, 9, 'accepted'), (7, 10, 'accepted'), (8, 9, 'accepted'),
+(9, 10, 'accepted'), (10, 1, 'accepted');
+
+-- ============================================
+-- YOUTUBE — App de Vídeos com Embed Real
+-- ============================================
+
+SELECT 1;
+
+CREATE TABLE IF NOT EXISTS smartphone_youtube_channels (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT DEFAULT '',
+    avatar VARCHAR(500) DEFAULT '',
+    subscribers_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_youtube_videos (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    channel_id INT NOT NULL,
+    youtube_id VARCHAR(20) NOT NULL,
+    title VARCHAR(200) NOT NULL,
+    description TEXT DEFAULT '',
+    category VARCHAR(50) DEFAULT 'geral',
+    views_count INT DEFAULT 0,
+    likes_count INT DEFAULT 0,
+    duration VARCHAR(10) DEFAULT '0:00',
+    is_short TINYINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_channel (channel_id),
+    INDEX idx_category (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_youtube_favorites (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    phone VARCHAR(20) NOT NULL,
+    video_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_fav (phone, video_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS smartphone_youtube_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    phone VARCHAR(20) NOT NULL,
+    video_id INT NOT NULL,
+    watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_phone (phone)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- === YouTube Seed Data ===
+-- Canais curados pelo admin do servidor
+
+INSERT IGNORE INTO smartphone_youtube_channels (id, name, description, subscribers_count) VALUES
+(1, 'Weazel News LS', 'Canal oficial da Weazel News. Notícias 24h de Los Santos.', 15000),
+(2, 'Memes de LS', 'Os melhores memes e momentos engraçados de Los Santos.', 28000),
+(3, 'LS Music', 'Música brasileira e internacional. Playlists diárias.', 42000),
+(4, 'LS Tutoriais', 'Tutoriais e dicas para a vida em Los Santos.', 8500),
+(5, 'Street Racing LS', 'Os melhores rachas e tunagens de Los Santos.', 19000);
+
+-- NOTA: youtube_id são IDs REAIS do YouTube que funcionam no iframe embed
+-- Foram escolhidos vídeos curtos, leves e sem copyright issues
+-- O admin do servidor pode trocar por vídeos de sua preferência
+
+INSERT IGNORE INTO smartphone_youtube_videos (id, channel_id, youtube_id, title, category, views_count, likes_count, duration, is_short) VALUES
+(1,  3, 'dQw4w9WgXcQ', 'Rick Astley - Never Gonna Give You Up', 'musica', 1500000, 89000, '3:33', 0),
+(2,  2, 'J---aiyznGQ', 'Keyboard Cat - O Clássico', 'memes', 850000, 45000, '0:54', 1),
+(3,  3, 'kJQP7kiw5Fk', 'Luis Fonsi - Despacito', 'musica', 2800000, 120000, '4:42', 0),
+(4,  1, 'HEfHFsfGIhQ', 'Breaking News - Cobertura Ao Vivo', 'noticias', 120000, 8000, '2:15', 0),
+(5,  4, 'rfscVS0vtbw', 'Tutorial Python para Iniciantes', 'tutorial', 340000, 22000, '10:24', 0),
+(6,  2, 'QH2-TGUlwu4', 'Nyan Cat - 10 Hours', 'memes', 1200000, 67000, '0:30', 1),
+(7,  5, '2MtOpB_S0IA', 'Drift Compilation - Best of 2025', 'carros', 560000, 34000, '5:17', 0),
+(8,  3, 'fJ9rUzIMcZQ', 'Queen - Bohemian Rhapsody', 'musica', 3200000, 180000, '5:55', 0),
+(9,  4, 'Y8Wp3dafaMQ', 'GTA RP - Como Começar', 'tutorial', 89000, 5600, '8:30', 0),
+(10, 2, 'dQw4w9WgXcQ', 'Rickroll Compilação', 'memes', 420000, 28000, '1:20', 1),
+(11, 5, '9bZkp7q19f0', 'PSY - Gangnam Style (Corrida Edition)', 'carros', 780000, 45000, '4:13', 0),
+(12, 1, 'HEfHFsfGIhQ', 'Weazel News - Resumo Semanal', 'noticias', 67000, 3400, '3:45', 0),
+(13, 3, 'hT_nvWreIhg', 'Counting Stars - OneRepublic', 'musica', 950000, 56000, '4:17', 0),
+(14, 2, 'j5a0jTc9S10', 'Best Fails LS - Compilação #47', 'memes', 310000, 19000, '2:30', 1),
+(15, 4, 'pQN-pnXPaVg', 'Tutorial HTML e CSS Completo', 'tutorial', 520000, 31000, '12:08', 0);
+
+INSERT IGNORE INTO smartphone_youtube_favorites (phone, video_id) VALUES
+('555-0001', 1), ('555-0001', 3), ('555-0001', 8),
+('555-0002', 2), ('555-0002', 6);
+
+INSERT IGNORE INTO smartphone_youtube_history (phone, video_id) VALUES
+('555-0001', 1), ('555-0001', 3), ('555-0001', 7), ('555-0001', 8), ('555-0001', 5),
+('555-0002', 2), ('555-0002', 6), ('555-0002', 3);
+
+-- ============================================
+-- TIKTOK — Adicionar suporte a vídeo real
+-- ============================================
+-- Adiciona youtube_id para embed de vídeo real no TikTok
+ALTER TABLE smartphone_tiktok_videos ADD COLUMN IF NOT EXISTS youtube_id VARCHAR(20) DEFAULT NULL;
+
+-- Atualizar vídeos existentes com IDs reais do YouTube (shorts/curtos)
+UPDATE smartphone_tiktok_videos SET youtube_id = 'J---aiyznGQ' WHERE id = 1;
+UPDATE smartphone_tiktok_videos SET youtube_id = 'QH2-TGUlwu4' WHERE id = 2;
+UPDATE smartphone_tiktok_videos SET youtube_id = '2MtOpB_S0IA' WHERE id = 3;
+UPDATE smartphone_tiktok_videos SET youtube_id = 'dQw4w9WgXcQ' WHERE id = 4;
+UPDATE smartphone_tiktok_videos SET youtube_id = 'J---aiyznGQ' WHERE id = 5;
+UPDATE smartphone_tiktok_videos SET youtube_id = '9bZkp7q19f0' WHERE id = 6;
+UPDATE smartphone_tiktok_videos SET youtube_id = 'QH2-TGUlwu4' WHERE id = 7;
+UPDATE smartphone_tiktok_videos SET youtube_id = 'kJQP7kiw5Fk' WHERE id = 8;
