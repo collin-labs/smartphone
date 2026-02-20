@@ -33,6 +33,8 @@ import FleecaBank from "../apps/FleecaBank";
 import Discord from "../apps/Discord";
 import Camera from "../apps/Camera";
 import Truco from "../apps/Truco";
+import YouTube from "../apps/YouTube";
+import LinkedIn from "../apps/LinkedIn";
 import ControlCenter from "./ControlCenter";
 import LockScreen from "./LockScreen";
 import { usePusherEvent } from "../hooks/usePusher";
@@ -54,7 +56,7 @@ export default function PhoneShell() {
   const [transitioning, setTransitioning] = useState(null); // "in" | "out" | null
   const [notification, setNotification] = useState(null);
   const [settings, setSettings] = useState(INITIAL_SETTINGS);
-  const [locked, setLocked] = useState(true);
+  const [locked, setLocked] = useState(false);
   const [showCC, setShowCC] = useState(false);
   const [pin, setPin] = useState(null); // null=no pin, '1234'=has pin
 
@@ -64,7 +66,7 @@ export default function PhoneShell() {
     setCurrentApp(null);
     setTransitioning(null);
     setShowCC(false);
-    setLocked(true); // Always lock on open
+    // setLocked(true); // Lock screen disabled
 
     // Only in browser dev mode - in FiveM, real notifications come via pusher
     const isInGame = typeof GetParentResourceName === 'function' || window.invokeNative !== undefined;
@@ -370,6 +372,10 @@ export default function PhoneShell() {
         return <Camera onNavigate={handleNavigate} />;
       case "truco":
         return <Truco />;
+      case "youtube":
+        return <YouTube onNavigate={handleNavigate} />;
+      case "linkedin":
+        return <LinkedIn onNavigate={handleNavigate} />;
       default:
         // Placeholder for unimplemented apps
         return (

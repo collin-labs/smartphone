@@ -26,7 +26,9 @@ export const APPS = [
   { id: "calculator", name: "Calculadora", color: "#636366", icon: "./apps/calculator.webp", component: "calculator" },
   { id: "settings", name: "Ajustes", color: "#636366", icon: "./apps/settings.webp", component: "settings" },
   { id: "appstore", name: "App Store", color: "#0A84FF", icon: "./apps/appstore.png", fullscreen: true, component: "appstore" },
-  // --- Página 2: Jogos + Extras ---
+  // --- Página 2: Mídia + Jogos + Extras ---
+  { id: "youtube", name: "YouTube", color: "#FF0000", icon: "./apps/youtube.webp", fullscreen: true, component: "youtube" },
+  { id: "linkedin", name: "LinkedIn", color: "#0A66C2", icon: "./apps/linkedin.webp", fullscreen: true, component: "linkedin" },
   { id: "minesweeper", name: "Minas", color: "#30D158", icon: "./apps/minesweeper.webp", fullscreen: true, component: "minesweeper" },
   { id: "truco", name: "Truco", color: "#1B5E20", icon: "./apps/truco.webp", fullscreen: true, component: "truco" },
 ];
