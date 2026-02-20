@@ -298,19 +298,39 @@ function getMockResponse(member, args) {
         takeScreenshot: { ok: true, url: 'https://via.placeholder.com/400x400/333/fff?text=Camera' },
 
         // ============================================
-        // LINKEDIN — Mock Data
+        // TIKTOK — Mock Data (Fase 2 — vídeo real)
         // ============================================
-        linkedin_get_profile: { ok: true, profile: { id: 1, phone: '555-0001', name: 'Carlos Silva', headline: 'CEO & Fundador | Agência Soluções Digitais', company: 'Agência Soluções Digitais', position: 'CEO', connections_count: 8 } },
-        linkedin_get_feed: { ok: true, posts: [] },
-        linkedin_toggle_like: { ok: true },
-        linkedin_create_post: { ok: true, postId: 99 },
-        linkedin_get_jobs: { ok: true, jobs: [] },
-        linkedin_apply_job: { ok: true },
-        linkedin_get_connections: { ok: true, connections: [] },
-        linkedin_send_connection: { ok: true },
-        linkedin_accept_connection: { ok: true },
-        linkedin_reject_connection: { ok: true },
-        linkedin_get_professionals: { ok: true, profiles: [] },
+        tiktok_feed: {
+            ok: true,
+            myProfileId: 1,
+            videos: [
+                { id: 1, youtube_id: 'dQw4w9WgXcQ', username: 'marina.weazel', display_name: 'Marina Oliveira', avatar: '', caption: 'Cobertura ao vivo do evento beneficente em Vinewood! #WeazelNews #LosSantos', likes_count: 45200, comments_count: 3100, views_count: 120000, is_liked: 0 },
+                { id: 2, youtube_id: 'kJQP7kiw5Fk', username: 'rafael.customs', display_name: 'Rafael Santos', avatar: '', caption: 'Transformacao INSANA desse Elegy!! #LSCustoms #Drift', likes_count: 128000, comments_count: 8700, views_count: 560000, is_liked: 0 },
+                { id: 3, youtube_id: 'J---aiyznGQ', username: 'memes.ls', display_name: 'Memes de LS', avatar: '', caption: 'POV: voce esta atrasado pro trabalho na Maze Bank KKKKK #MemesLS', likes_count: 256000, comments_count: 12000, views_count: 890000, is_liked: 1 },
+                { id: 4, youtube_id: 'fJ9rUzIMcZQ', username: 'ls.music', display_name: 'LS Music Official', avatar: '', caption: 'Bohemian Rhapsody no Bahama Mamas! #Musica #BahamaMamas', likes_count: 89500, comments_count: 5400, views_count: 340000, is_liked: 0 },
+                { id: 5, youtube_id: 'QH2-TGUlwu4', username: 'ana.pillbox', display_name: 'Ana Costa', avatar: '', caption: 'Dia a dia no Pillbox Medical #Medicina #Pillbox', likes_count: 34100, comments_count: 2800, views_count: 98000, is_liked: 0 },
+                { id: 6, youtube_id: '2MtOpB_S0IA', username: 'street.racing.ls', display_name: 'Street Racing LS', avatar: '', caption: 'DRIFT COMPILATION - Sandy Shores! #StreetRacing #Drift', likes_count: 198000, comments_count: 9200, views_count: 450000, is_liked: 0 },
+                { id: 7, youtube_id: 'HEfHFsfGIhQ', username: 'marina.weazel', display_name: 'Marina Oliveira', avatar: '', caption: 'URGENTE: Perseguicao policial pela LS Freeway! #WeazelNews', likes_count: 312000, comments_count: 18000, views_count: 780000, is_liked: 0 },
+                { id: 8, youtube_id: 'rfscVS0vtbw', username: 'tech.ls', display_name: 'LS Tutoriais', avatar: '', caption: 'Aprenda Python em 5 minutos! #Tech #Tutorial', likes_count: 67300, comments_count: 4100, views_count: 230000, is_liked: 0 },
+            ]
+        },
+        tiktok_profile: {
+            ok: true,
+            myProfileId: 1,
+            profile: { id: 1, username: 'carlos.silva', display_name: 'Carlos Silva', bio: 'Los Santos lifestyle | Maze Bank employee\nGaming & Cars', followers_count: 12800, following_count: 342, likes_count: 45200 },
+            videos: [
+                { id: 1, youtube_id: 'dQw4w9WgXcQ', caption: 'Meu primeiro video! #LosSantos', likes_count: 450, comments_count: 23, views_count: 1200 },
+            ]
+        },
+        tiktok_like: { ok: true },
+        tiktok_follow: { ok: true },
+        tiktok_comment: { ok: true, id: Date.now() },
+        tiktok_comments: { ok: true, comments: [
+            { id: 1, username: 'marina.weazel', display_name: 'Marina Oliveira', comment: 'Incrivel demais!!', created_at: new Date(Date.now() - 3600000).toISOString() },
+            { id: 2, username: 'rafael.customs', display_name: 'Rafael Santos', comment: 'Manda mais desse conteudo!', created_at: new Date(Date.now() - 7200000).toISOString() },
+        ]},
+        tiktok_post: { ok: true, id: Date.now() },
+        tiktok_delete: { ok: true },
     };
 
     return mocks[member] || { ok: true, mock: true, member };
