@@ -1,0 +1,18 @@
+{
+  "item": "celular",
+  "requireItem": false,
+  "keybind": "M",
+  "currency": "R$",
+  "locale": "pt-BR",
+  "bankType": "nubank",
+  "zoom": 100,
+  "useGameClock": false,
+  "isAndroid": false,
+  "case": "iphonexs",
+  "ringSound": "assets/sounds/ring.mp3",
+  "dialSound": "assets/sounds/dial.mp3",
+  "notificationSound": "assets/sounds/notification.mp3",
+  "defaultWallpaper": "assets/wallpapers/default.jpg",
+  "disabledApps": [],
+  "customApps": {}
+}

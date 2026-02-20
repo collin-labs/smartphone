@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smartphone</title>
+    <style>
+        /* NUI: fundo transparente para overlay no jogo */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        // ESC handler — fora do React, direto no DOM
+        // Quando NUI tem foco, o browser recebe teclado, não o Lua
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' || e.keyCode === 27) {
+                e.preventDefault();
+                e.stopPropagation();
+                // Chama NUI callback no client.lua
+                fetch('https://smartphone/phone:close', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                }).catch(function() {});
+            }
+        }, true);
+    </script>
+    <script type="module" src="./src/main.jsx"></script>
+</body>
+</html>
