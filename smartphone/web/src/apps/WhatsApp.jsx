@@ -72,6 +72,7 @@ export default function WhatsApp({ onNavigate, params }) {
   useEffect(() => { if(view==='new' || showCreateGroup) fetchBackend('contacts_list').then(r=>{if(r?.contacts)setContacts(r.contacts);}); }, [view, showCreateGroup]);
 
   const openChat = useCallback(async (chat) => { setActiveChat(chat);setView('chat');setMessages([]); const r=await fetchBackend('whatsapp_messages',{chatId:chat.id}); if(r?.messages)setMessages(r.messages); if(chat.unreadCount>0)setChats(p=>p.map(c=>c.id===chat.id?{...c,unreadCount:0}:c)); }, []);
+  const deleteChat = async (chatId) => { const r=await fetchBackend('whatsapp_delete_chat',{chatId}); if(r?.ok){ setChats(p=>p.filter(x=>x.id!==chatId)); if(activeChat?.id===chatId){setActiveChat(null);setView('list');} } };
 
   const handleSend = useCallback(async () => {
     const text=inputText.trim(); if(!text)return; setInputText('');

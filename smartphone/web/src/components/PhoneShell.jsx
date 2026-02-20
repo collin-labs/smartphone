@@ -30,6 +30,9 @@ import Grindr from "../apps/Grindr";
 import Gallery from "../apps/Gallery";
 import AppStore from "../apps/AppStore";
 import FleecaBank from "../apps/FleecaBank";
+import Discord from "../apps/Discord";
+import Camera from "../apps/Camera";
+import Truco from "../apps/Truco";
 import ControlCenter from "./ControlCenter";
 import LockScreen from "./LockScreen";
 import { usePusherEvent } from "../hooks/usePusher";
@@ -361,6 +364,12 @@ export default function PhoneShell() {
         return <FleecaBank onNavigate={handleNavigate} />;
       case "grindr":
         return <Grindr onNavigate={handleNavigate} />;
+      case "discord":
+        return <Discord onNavigate={handleNavigate} />;
+      case "camera":
+        return <Camera onNavigate={handleNavigate} />;
+      case "truco":
+        return <Truco />;
       default:
         // Placeholder for unimplemented apps
         return (

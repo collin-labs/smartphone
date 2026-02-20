@@ -126,6 +126,8 @@ export default function SMS({ onNavigate, params }) {
   // Enviar mensagem
   // ============================================
 
+  const deleteConversation = async (convId) => { const r=await fetchBackend('sms_delete_conversation',{conversationId:convId}); if(r?.ok){ setConversations(p=>p.filter(x=>x.id!==convId)); if(activeConv?.id===convId){setActiveConv(null);setView('list');} } };
+
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;

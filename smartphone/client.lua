@@ -250,12 +250,57 @@ RegisterNUICallback('client:action', function(data, cb)
             PlaySoundFrontend(-1, 'Dial_and_Remote_Ring', 'Phone_SoundSet_Default', false)
         elseif sound == 'hangup' then
             PlaySoundFrontend(-1, 'Hang_Up', 'Phone_SoundSet_Default', false)
-        elseif sound == 'camera' then
+        elseif sound == 'camera' or sound == 'photo' then
             PlaySoundFrontend(-1, 'Camera_Shoot', 'Phone_SoundSet_Default', false)
         else
             PlaySoundFrontend(-1, 'Text_Arrive_Tone', 'Phone_SoundSet_Default', false)
         end
         cb({ ok = true })
+
+    elseif action == 'setWaypoint' then
+        local x = tonumber(data.x) or 0.0
+        local y = tonumber(data.y) or 0.0
+        SetNewWaypoint(x, y)
+        cb({ ok = true })
+
+    elseif action == 'removeWaypoint' then
+        SetWaypointOff()
+        cb({ ok = true })
+
+    elseif action == 'toggleFlashlight' then
+        -- Toggle lanterna do jogador
+        local ped = PlayerPedId()
+        if IsFlashLightOn(ped) then
+            SetFlashLightEnabled(ped, false)
+        else
+            SetFlashLightEnabled(ped, true)
+        end
+        cb({ ok = true })
+
+    elseif action == 'takeScreenshot' then
+        -- Câmera real: screenshot-basic captura a tela do GTA
+        local webhookUrl = GetConvar('smartphone_screenshot_webhook', '')
+        if webhookUrl == '' then
+            -- Sem webhook configurado: retorna placeholder
+            SendNUIMessage({ type = 'screenshot:result', url = '' })
+            cb({ ok = false, error = 'webhook_not_configured' })
+        else
+            -- screenshot-basic instalado
+            if GetResourceState('screenshot-basic') == 'started' then
+                exports['screenshot-basic']:requestScreenshotUpload(webhookUrl, 'files[]', {encoding = 'jpg', quality = 0.85}, function(data)
+                    local resp = json.decode(data)
+                    local url = ''
+                    if resp and resp.attachments and resp.attachments[1] then
+                        url = resp.attachments[1].url or ''
+                    end
+                    SendNUIMessage({ type = 'screenshot:result', url = url })
+                end)
+                cb({ ok = true })
+            else
+                SendNUIMessage({ type = 'screenshot:result', url = '' })
+                cb({ ok = false, error = 'screenshot-basic_not_running' })
+            end
+        end
 
     else
         cb({ error = 'unknown_action' })

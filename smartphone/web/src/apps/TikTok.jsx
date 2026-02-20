@@ -95,6 +95,7 @@ export default function TikTok({ onNavigate }) {
       }));
     }
   };
+  const deleteVideo = async (videoId) => { const r=await fetchBackend('tiktok_delete',{videoId}); if(r?.ok){ setVideos(p=>p.filter(x=>x.id!==videoId)); } };
 
   const scrollToVideo = (dir) => {
     if (dir === 'up' && currentIdx > 0) setCurrentIdx(i => i - 1);

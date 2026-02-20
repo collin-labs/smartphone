@@ -69,6 +69,8 @@ export default function Twitter({ onNavigate }) {
     const res = await fetchBackend('tw_profile', { profileId });
     if (res?.profile) { setViewProfile(res.profile); setViewTweets(res.tweets || []); setView('viewProfile'); }
   };
+  const deleteTweet = async (tweetId) => { const r=await fetchBackend('tw_delete',{tweetId}); if(r?.ok){ setTweets(p=>p.filter(x=>x.id!==tweetId)); setViewTweets(p=>p.filter(x=>x.id!==tweetId)); } };
+  const updateProfile = async (bio, displayName) => { const r=await fetchBackend('tw_profile_update',{bio,display_name:displayName}); if(r?.ok)loadProfile(); };
 
   const timeAgo = (d) => {
     if (!d) return '';
@@ -90,6 +92,7 @@ export default function Twitter({ onNavigate }) {
           {t.verified === 1 && <span style={{ color: C.blue, fontSize: 12 }}>✓</span>}
           <span style={{ color: C.textSec, fontSize: 13 }}>@{t.username}</span>
           <span style={{ color: C.textSec, fontSize: 13 }}>· {timeAgo(t.created_at)}</span>
+          {t.profile_id === myProfile?.id && <button onClick={(e)=>{e.stopPropagation();if(confirm('Excluir tweet?'))deleteTweet(t.id);}} style={{...btn,color:C.textSec,fontSize:16,marginLeft:'auto'}}>⋯</button>}
         </div>
         <div style={{ color: C.text, fontSize: 15, lineHeight: 1.4, marginTop: 4, wordBreak: 'break-word' }}>{t.content}</div>
         <div style={{ display: 'flex', gap: 32, marginTop: 10 }}>

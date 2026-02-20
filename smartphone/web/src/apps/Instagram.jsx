@@ -66,6 +66,8 @@ export default function Instagram({ onNavigate }) {
   const openProfile = async (id) => { const r=await fetchBackend('ig_profile',{profileId:id}); if(r?.profile){setViewProfile({...r.profile,isFollowing:r.isFollowing});setView('profile');} };
   const handleFollow = async () => { if(!viewProfile)return; const r=await fetchBackend('ig_follow',{profileId:viewProfile.id}); if(r?.ok)setViewProfile(p=>({...p,isFollowing:r.following,followers:p.followers+(r.following?1:-1)})); };
   const handleSearch = async () => { if(!searchQuery.trim())return; const r=await fetchBackend('ig_search',{query:searchQuery}); if(r?.results)setSearchResults(r.results); };
+  const deletePost = async (postId) => { const r=await fetchBackend('ig_delete_post',{postId}); if(r?.ok){ setPosts(p=>p.filter(x=>x.id!==postId)); } };
+  const updateProfile = async (bio, displayName) => { const r=await fetchBackend('ig_profile_update',{bio,display_name:displayName}); if(r?.ok){ setMyProfile(p=>({...p,bio:bio||p.bio,name:displayName||p.name})); } };
 
   // ===== COMMENTS =====
   if (view === 'comments') return (
@@ -249,6 +251,7 @@ export default function Instagram({ onNavigate }) {
                 <div onClick={()=>openProfile(p.profile_id)} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', cursor:'pointer' }}>
                   <Avatar name={p.username} size={32} ring />
                   <span style={{ color:C.text, fontSize:13, fontWeight:600, flex:1 }}>{p.username}</span>
+                  {p.profile_id === myProfile?.id && <button onClick={(e)=>{e.stopPropagation();if(confirm('Excluir post?'))deletePost(p.id);}} style={{...B,color:C.textSec,fontSize:18}}>⋯</button>}
                   <span style={{ color:C.textTer, fontSize:12 }}>{timeAgo(p.created_at)}</span>
                 </div>
                 {/* Image */}

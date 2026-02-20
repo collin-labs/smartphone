@@ -572,6 +572,37 @@ registerHandler('bank_pix', async (source, args) => {
     };
 });
 
+registerHandler('bank_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const myPhone = await getPhoneFromSource(source);
+
+    // Saldo
+    let balance = 0;
+    try {
+        if (typeof exports.vrp?.getMoney === 'function') {
+            balance = exports.vrp.getMoney(parseInt(userId)) || 0;
+        } else if (typeof exports.vrp?.getBankMoney === 'function') {
+            balance = exports.vrp.getBankMoney(parseInt(userId)) || 0;
+        }
+    } catch (e) { balance = 0; }
+
+    // Transações recentes
+    const transactions = await dbQuery(`
+        SELECT t.*, 
+            CASE WHEN t.from_phone = ? THEN 'sent' ELSE 'received' END AS direction
+        FROM smartphone_bank_transactions t
+        WHERE t.from_phone = ? OR t.to_phone = ?
+        ORDER BY t.created_at DESC LIMIT 20
+    `, [myPhone, myPhone, myPhone]);
+
+    return { ok: true, balance, transactions: transactions || [], phone: myPhone };
+});
+
+registerHandler('bank_transfer', async (source, args) => {
+    // Alias para bank_pix — FleecaBank usa bank_transfer, Nubank usa bank_pix
+    return await handlers['bank_pix'](source, args);
+});
+
 registerHandler('bank_receipt', async (source, args) => {
     const myPhone = await getPhoneFromSource(source);
     const { transactionId } = args;
@@ -1179,7 +1210,7 @@ registerHandler('ig_like', async (source, args) => {
         // Simplified: try to notify
         const ownerProfile = await dbSingle('SELECT user_id FROM smartphone_instagram_profiles WHERE id = ?', [post.profile_id]);
         if (ownerProfile) {
-            const ownerSource = getSourceByUserId(ownerProfile.user_id);
+            const ownerSource = findPlayerSource(ownerProfile.user_id);
             if (ownerSource) {
                 pushToPlayer(ownerSource, 'IG_NOTIFICATION', { type: 'like', from: profile.username, postId });
             }
@@ -2479,7 +2510,13 @@ registerHandler('ifood_init', async (source) => {
     const orders = await dbQuery(
         'SELECT * FROM smartphone_ifood_orders WHERE user_id = ? ORDER BY id DESC LIMIT 10', [userId]
     );
-    return { ok: true, orders };
+    // Load restaurants and menus
+    const restaurants = await dbQuery('SELECT * FROM smartphone_ifood_restaurants ORDER BY rating DESC');
+    for (const r of (restaurants || [])) {
+        const items = await dbQuery('SELECT * FROM smartphone_ifood_menu_items WHERE restaurant_id = ? ORDER BY id', [r.id]);
+        r.menu = items || [];
+    }
+    return { ok: true, orders, restaurants: restaurants || [] };
 });
 
 registerHandler('ifood_order', async (source, args) => {
@@ -2646,22 +2683,365 @@ registerHandler('grindr_send', async (source, args) => {
 // GALLERY / PHOTOS
 // ============================================
 
+// ============================================
+// HANDLERS: Discord
+// ============================================
+
+// Load all servers the user is a member of
+registerHandler('discord_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const myPhone = await getPhoneFromSource(source);
+    const profile = await dbSingle('SELECT username FROM smartphone_profiles WHERE phone_number = ?', [myPhone]);
+    const servers = await dbQuery(`
+        SELECT s.*, m.role, m.role_color,
+            (SELECT COUNT(*) FROM smartphone_discord_members WHERE server_id = s.id) AS member_count
+        FROM smartphone_discord_servers s
+        JOIN smartphone_discord_members m ON m.server_id = s.id AND m.user_id = ?
+        ORDER BY s.name
+    `, [userId]);
+    return { ok: true, servers: servers || [], username: profile?.username || myPhone, userId: parseInt(userId) };
+});
+
+// Load a single server: channels + members
+registerHandler('discord_server', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server inválido' };
+    const member = await dbSingle('SELECT * FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    if (!member) return { error: 'Você não é membro deste servidor' };
+    const channels = await dbQuery('SELECT * FROM smartphone_discord_channels WHERE server_id = ? ORDER BY position, id', [serverId]);
+    const members = await dbQuery(`
+        SELECT m.*, p.username, p.phone_number
+        FROM smartphone_discord_members m
+        LEFT JOIN smartphone_profiles p ON p.user_id = m.user_id
+        WHERE m.server_id = ?
+        ORDER BY FIELD(m.role, 'owner', 'admin', 'mod', 'membro'), p.username
+    `, [serverId]);
+    const server = await dbSingle('SELECT * FROM smartphone_discord_servers WHERE id = ?', [serverId]);
+    return { ok: true, server, channels: channels || [], members: members || [], myRole: member.role };
+});
+
+// Load messages for a channel
+registerHandler('discord_messages', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { channelId, limit } = args || {};
+    if (!channelId) return { error: 'Channel inválido' };
+    const messages = await dbQuery(`
+        SELECT * FROM smartphone_discord_messages
+        WHERE channel_id = ? ORDER BY created_at DESC LIMIT ?
+    `, [channelId, limit || 50]);
+    return { ok: true, messages: (messages || []).reverse() };
+});
+
+// Send a message in a channel
+registerHandler('discord_send', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const myPhone = await getPhoneFromSource(source);
+    const { channelId, message } = args || {};
+    if (!channelId || !message?.trim()) return { error: 'Mensagem vazia' };
+    // Get channel's server and check membership
+    const channel = await dbSingle('SELECT * FROM smartphone_discord_channels WHERE id = ?', [channelId]);
+    if (!channel) return { error: 'Canal não encontrado' };
+    const member = await dbSingle('SELECT * FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [channel.server_id, userId]);
+    if (!member) return { error: 'Não é membro' };
+    const profile = await dbSingle('SELECT username FROM smartphone_profiles WHERE phone_number = ?', [myPhone]);
+    const username = profile?.username || myPhone;
+    const msgId = await dbInsert(
+        'INSERT INTO smartphone_discord_messages (channel_id, user_id, username, role_color, message) VALUES (?, ?, ?, ?, ?)',
+        [channelId, userId, username, member.role_color, message.trim()]
+    );
+    const msgData = { id: msgId, channel_id: channelId, user_id: parseInt(userId), username, role_color: member.role_color, message: message.trim(), created_at: new Date().toISOString() };
+    // Push to all online members of this server
+    const serverMembers = await dbQuery('SELECT user_id FROM smartphone_discord_members WHERE server_id = ?', [channel.server_id]);
+    for (const sm of (serverMembers || [])) {
+        if (sm.user_id != userId) {
+            const memberSource = findPlayerSource(sm.user_id);
+            if (memberSource) pushToPlayer(memberSource, 'DISCORD_MESSAGE', { ...msgData, serverId: channel.server_id });
+        }
+    }
+    return { ok: true, message: msgData };
+});
+
+// Create a new server
+registerHandler('discord_create_server', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { name, icon } = args || {};
+    if (!name?.trim()) return { error: 'Nome obrigatório' };
+    const serverId = await dbInsert(
+        'INSERT INTO smartphone_discord_servers (name, icon, owner_id) VALUES (?, ?, ?)',
+        [name.trim(), icon || '🎮', userId]
+    );
+    // Add owner as member
+    await dbInsert(
+        'INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES (?, ?, ?, ?)',
+        [serverId, userId, 'owner', '#F1C40F']
+    );
+    // Create default channels
+    await dbInsert('INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES (?, ?, ?, ?)', [serverId, 'geral', 'text', 0]);
+    await dbInsert('INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES (?, ?, ?, ?)', [serverId, 'avisos', 'announcements', 1]);
+    return { ok: true, serverId };
+});
+
+// Join a server by invite
+registerHandler('discord_join', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server inválido' };
+    const server = await dbSingle('SELECT * FROM smartphone_discord_servers WHERE id = ?', [serverId]);
+    if (!server) return { error: 'Servidor não encontrado' };
+    const existing = await dbSingle('SELECT id FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    if (existing) return { error: 'Já é membro' };
+    await dbInsert('INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES (?, ?, ?, ?)', [serverId, userId, 'membro', '#99AAB5']);
+    return { ok: true, server };
+});
+
+// Leave a server
+registerHandler('discord_leave', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server inválido' };
+    const server = await dbSingle('SELECT * FROM smartphone_discord_servers WHERE id = ?', [serverId]);
+    if (server && server.owner_id == userId) return { error: 'Owner não pode sair. Delete o servidor.' };
+    await dbUpdate('DELETE FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    return { ok: true };
+});
+
+// Invite a player to a server (by phone number)
+registerHandler('discord_invite', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId, phone } = args || {};
+    if (!serverId || !phone) return { error: 'Dados inválidos' };
+    const member = await dbSingle('SELECT * FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    if (!member) return { error: 'Você não é membro deste servidor' };
+    // Find target user
+    const targetProfile = await dbSingle('SELECT user_id FROM smartphone_profiles WHERE phone_number = ?', [phone]);
+    if (!targetProfile) return { error: 'Jogador não encontrado' };
+    const existing = await dbSingle('SELECT id FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, targetProfile.user_id]);
+    if (existing) return { error: 'Já é membro' };
+    await dbInsert('INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES (?, ?, ?, ?)', [serverId, targetProfile.user_id, 'membro', '#99AAB5']);
+    // Push notification
+    const targetSource = findPlayerSource(targetProfile.user_id);
+    if (targetSource) {
+        const server = await dbSingle('SELECT name, icon FROM smartphone_discord_servers WHERE id = ?', [serverId]);
+        pushToPlayer(targetSource, 'DISCORD_INVITE', { serverId, serverName: server?.name, serverIcon: server?.icon });
+    }
+    return { ok: true };
+});
+
+// Set role for a member (admin+ only)
+registerHandler('discord_set_role', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId, targetUserId, role, roleColor } = args || {};
+    if (!serverId || !targetUserId || !role) return { error: 'Dados inválidos' };
+    const myMember = await dbSingle('SELECT role FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    if (!myMember || (myMember.role !== 'owner' && myMember.role !== 'admin')) return { error: 'Sem permissão' };
+    if (role === 'owner') return { error: 'Não pode promover a owner' };
+    await dbUpdate('UPDATE smartphone_discord_members SET role = ?, role_color = ? WHERE server_id = ? AND user_id = ?', [role, roleColor || '#99AAB5', serverId, targetUserId]);
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: Discord
+// ============================================
+
+registerHandler('discord_init', async (source) => {
+    const userId = await getUserIdCached(source);
+    const servers = await dbQuery(`
+        SELECT s.* FROM smartphone_discord_servers s
+        INNER JOIN smartphone_discord_members m ON m.server_id = s.id
+        WHERE m.user_id = ? ORDER BY s.id
+    `, [userId]);
+    const profile = await dbSingle('SELECT phone_number FROM smartphone_profiles WHERE user_id = ?', [userId]);
+    return { ok: true, servers: servers || [], profile: { username: profile?.phone_number || userId, role_color: '#fff', id: userId } };
+});
+
+registerHandler('discord_server', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server ID obrigatório' };
+    const channels = await dbQuery('SELECT * FROM smartphone_discord_channels WHERE server_id = ? ORDER BY position, id', [serverId]);
+    const members = await dbQuery(`
+        SELECT m.*, p.phone_number as username FROM smartphone_discord_members m
+        LEFT JOIN smartphone_profiles p ON p.user_id = m.user_id
+        WHERE m.server_id = ? ORDER BY FIELD(m.role, 'dono','admin','moderador','membro'), m.id
+    `, [serverId]);
+    return { ok: true, channels: channels || [], members: (members || []).map(m => ({...m, username: m.username || m.user_id, online: !!findPlayerSource(m.user_id)})) };
+});
+
+registerHandler('discord_messages', async (source, args) => {
+    const { channelId } = args || {};
+    if (!channelId) return { error: 'Channel ID obrigatório' };
+    const messages = await dbQuery('SELECT * FROM smartphone_discord_messages WHERE channel_id = ? ORDER BY id DESC LIMIT 50', [channelId]);
+    return { ok: true, messages: (messages || []).reverse() };
+});
+
+registerHandler('discord_send', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { channelId, message } = args || {};
+    if (!channelId || !message?.trim()) return { error: 'Mensagem inválida' };
+
+    // Get channel's server to check membership
+    const channel = await dbSingle('SELECT * FROM smartphone_discord_channels WHERE id = ?', [channelId]);
+    if (!channel) return { error: 'Canal não encontrado' };
+    const member = await dbSingle('SELECT * FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [channel.server_id, userId]);
+    if (!member) return { error: 'Você não é membro deste servidor' };
+
+    const profile = await dbSingle('SELECT phone_number FROM smartphone_profiles WHERE user_id = ?', [userId]);
+    const username = profile?.phone_number || userId;
+
+    const id = await dbInsert(
+        'INSERT INTO smartphone_discord_messages (channel_id, user_id, username, role_color, message) VALUES (?, ?, ?, ?, ?)',
+        [channelId, userId, username, member.role_color || '#99AAB5', message.trim()]
+    );
+
+    const msg = { id, channel_id: channelId, user_id: userId, username, role_color: member.role_color || '#99AAB5', message: message.trim(), created_at: new Date().toISOString() };
+
+    // Push to all online members of this server
+    const members = await dbQuery('SELECT user_id FROM smartphone_discord_members WHERE server_id = ?', [channel.server_id]);
+    for (const m of (members || [])) {
+        if (m.user_id !== userId) {
+            const memberSource = findPlayerSource(m.user_id);
+            if (memberSource) pushToPlayer(memberSource, 'DISCORD_MESSAGE', { ...msg, channelId });
+        }
+    }
+
+    return { ok: true, message: msg };
+});
+
+registerHandler('discord_create_server', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { name, icon } = args || {};
+    if (!name?.trim()) return { error: 'Nome obrigatório' };
+
+    const serverId = await dbInsert('INSERT INTO smartphone_discord_servers (name, icon, owner_id) VALUES (?, ?, ?)', [name.trim(), icon || '🎮', userId]);
+    // Add owner as member
+    await dbInsert('INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES (?, ?, ?, ?)', [serverId, userId, 'dono', '#F0B232']);
+    // Create default channels
+    await dbInsert('INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES (?, ?, ?, ?)', [serverId, 'geral', 'text', 0]);
+    await dbInsert('INSERT INTO smartphone_discord_channels (server_id, name, type, position) VALUES (?, ?, ?, ?)', [serverId, 'avisos', 'announcements', 1]);
+
+    return { ok: true, server: { id: serverId, name: name.trim(), icon: icon || '🎮', owner_id: userId } };
+});
+
+registerHandler('discord_join', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { invite, serverId } = args || {};
+    let targetId = serverId;
+
+    // invite can be server ID or name
+    if (invite && !targetId) {
+        const server = await dbSingle('SELECT id FROM smartphone_discord_servers WHERE id = ? OR name LIKE ?', [invite, `%${invite}%`]);
+        if (!server) return { error: 'Servidor não encontrado' };
+        targetId = server.id;
+    }
+    if (!targetId) return { error: 'Convite inválido' };
+
+    // Check if already member
+    const existing = await dbSingle('SELECT id FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [targetId, userId]);
+    if (existing) return { error: 'Você já é membro deste servidor' };
+
+    await dbInsert('INSERT INTO smartphone_discord_members (server_id, user_id, role, role_color) VALUES (?, ?, ?, ?)', [targetId, userId, 'membro', '#99AAB5']);
+    const server = await dbSingle('SELECT * FROM smartphone_discord_servers WHERE id = ?', [targetId]);
+    return { ok: true, server };
+});
+
+registerHandler('discord_leave', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server ID obrigatório' };
+
+    // Can't leave if owner
+    const server = await dbSingle('SELECT owner_id FROM smartphone_discord_servers WHERE id = ?', [serverId]);
+    if (server?.owner_id === userId) return { error: 'O dono não pode sair. Delete o servidor.' };
+
+    await dbUpdate('DELETE FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    return { ok: true };
+});
+
+registerHandler('discord_invite', async (source, args) => {
+    const { serverId } = args || {};
+    if (!serverId) return { error: 'Server ID obrigatório' };
+    // Return the server ID as invite code (simple)
+    return { ok: true, invite: String(serverId) };
+});
+
+registerHandler('discord_set_role', async (source, args) => {
+    const userId = await getUserIdCached(source);
+    const { serverId, targetUserId, role, roleColor } = args || {};
+    if (!serverId || !targetUserId) return { error: 'Dados inválidos' };
+
+    // Check if caller is owner or admin
+    const callerMember = await dbSingle('SELECT role FROM smartphone_discord_members WHERE server_id = ? AND user_id = ?', [serverId, userId]);
+    if (!callerMember || (callerMember.role !== 'dono' && callerMember.role !== 'admin')) return { error: 'Sem permissão' };
+
+    await dbUpdate('UPDATE smartphone_discord_members SET role = ?, role_color = ? WHERE server_id = ? AND user_id = ?',
+        [role || 'membro', roleColor || '#99AAB5', serverId, targetUserId]);
+    return { ok: true };
+});
+
+// ============================================
+// HANDLERS: Spotify
+// ============================================
+
+registerHandler('spotify_init', async (source) => {
+    // Try loading from DB first
+    let playlists = await dbQuery('SELECT * FROM smartphone_spotify_playlists ORDER BY id');
+    if (playlists && playlists.length > 0) {
+        for (const pl of playlists) {
+            const songs = await dbQuery('SELECT * FROM smartphone_spotify_songs WHERE playlist_id = ? ORDER BY track_order', [pl.id]);
+            pl.songs = songs || [];
+        }
+        return { ok: true, playlists };
+    }
+    // Fallback: default GTA RP playlists
+    return { ok: true, playlists: [
+        { id:1, name:'Rap Nacional', cover:'🎤', songs:[
+            {id:1,name:'Vida Loka Pt.2',artist:'Racionais',dur:'5:42'},{id:2,name:'Diário de um Detento',artist:'Racionais',dur:'8:18'},
+            {id:3,name:'Negro Drama',artist:'Racionais',dur:'6:32'},{id:4,name:'A Vida é Desafio',artist:'Racionais',dur:'3:47'},
+            {id:5,name:'Isso Aqui é uma Guerra',artist:'Facção Central',dur:'4:15'},{id:6,name:'Aqui é Selva',artist:'MV Bill',dur:'3:55'},
+        ]},
+        { id:2, name:'Trap BR', cover:'🔥', songs:[
+            {id:7,name:'Type Beat',artist:'Matuê',dur:'3:12'},{id:8,name:'Kenny G',artist:'MC IG',dur:'2:48'},
+            {id:9,name:'M4',artist:'MC Poze',dur:'2:55'},{id:10,name:'Eu Comprei um Carro',artist:'Orochi',dur:'3:22'},
+        ]},
+        { id:3, name:'Lo-Fi Beats', cover:'🎧', songs:[
+            {id:11,name:'Coffee Shop Vibes',artist:'Lo-Fi Girl',dur:'3:05'},{id:12,name:'Rainy Day',artist:'Chillhop',dur:'2:45'},
+            {id:13,name:'Midnight Study',artist:'Lofi Fruits',dur:'3:30'},{id:14,name:'Sunset Drive',artist:'Sleepy Fish',dur:'2:58'},
+        ]},
+        { id:4, name:'Funk', cover:'💃', songs:[
+            {id:15,name:'Ah Lelek',artist:'MC Lelek',dur:'3:10'},{id:16,name:'Bum Bum Tam Tam',artist:'MC Fioti',dur:'2:42'},
+            {id:17,name:'Envolvimento',artist:'MC Loma',dur:'2:30'},{id:18,name:'Vai Malandra',artist:'Anitta',dur:'3:01'},
+        ]},
+        { id:5, name:'Rock Clássico', cover:'🎸', songs:[
+            {id:19,name:'Bohemian Rhapsody',artist:'Queen',dur:'5:55'},{id:20,name:'Stairway to Heaven',artist:'Led Zeppelin',dur:'8:02'},
+            {id:21,name:'Hotel California',artist:'Eagles',dur:'6:30'},{id:22,name:'Comfortably Numb',artist:'Pink Floyd',dur:'6:23'},
+        ]},
+    ]};
+});
+
+// ============================================
+// HANDLERS: Gallery
+// ============================================
+
 registerHandler('gallery_init', async (source) => {
     const userId = await getUserIdCached(source);
     const photos = await dbQuery('SELECT * FROM smartphone_gallery WHERE user_id = ? ORDER BY id DESC LIMIT 50', [userId]);
     return { ok: true, photos };
 });
 
-registerHandler('gallery_capture', async (source) => {
+registerHandler('gallery_capture', async (source, args) => {
     const userId = await getUserIdCached(source);
-    const id = await dbInsert('INSERT INTO smartphone_gallery (user_id, color, emoji, label) VALUES (?, ?, ?, ?)', [userId, '#333', '📸', 'Screenshot']);
-    return { ok: true, photo: { id } };
+    const { url, caption } = args || {};
+    const photoUrl = url || '';
+    const photoCaption = caption || 'Screenshot';
+    const id = await dbInsert('INSERT INTO smartphone_gallery (user_id, url, caption) VALUES (?, ?, ?)', [userId, photoUrl, photoCaption]);
+    return { ok: true, photo: { id, url: photoUrl, caption: photoCaption } };
 });
 
 registerHandler('gallery_delete', async (source, args) => {
     const userId = await getUserIdCached(source);
-    const { photoId } = args || {};
-    if (photoId) await dbUpdate('DELETE FROM smartphone_gallery WHERE id = ? AND user_id = ?', [photoId, userId]);
+    const id = args?.id || args?.photoId;
+    if (id) await dbUpdate('DELETE FROM smartphone_gallery WHERE id = ? AND user_id = ?', [id, userId]);
     return { ok: true };
 });
 
