@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import usePhone from './store/usePhone';
 import PhoneShell from './components/PhoneShell';
 import { useIsInGame } from './hooks/useNui';
@@ -6,9 +6,10 @@ import { useIsInGame } from './hooks/useNui';
 export default function App() {
     const { isOpen, open, close } = usePhone();
     const isInGame = useIsInGame();
+    const [screenshotMode, setScreenshotMode] = useState(false);
 
     // ============================================
-    // NUI MESSAGES: phone:open e phone:close do client.lua
+    // NUI MESSAGES: phone:open, phone:close, screenshot:hide/show
     // ============================================
     useEffect(() => {
         const handleMessage = (event) => {
@@ -21,6 +22,12 @@ export default function App() {
                     break;
                 case 'phone:close':
                     close();
+                    break;
+                case 'screenshot:hide':
+                    setScreenshotMode(true);
+                    break;
+                case 'screenshot:show':
+                    setScreenshotMode(false);
                     break;
                 case 'pusher':
                     break;
@@ -57,5 +64,9 @@ export default function App() {
         }
     }, []);
 
-    return <PhoneShell />;
+    return (
+        <div style={{ visibility: screenshotMode ? 'hidden' : 'visible' }}>
+            <PhoneShell />
+        </div>
+    );
 }

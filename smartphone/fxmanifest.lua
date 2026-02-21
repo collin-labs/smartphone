@@ -8,6 +8,9 @@ version '1.0.0'
 
 -- Dependências
 dependency 'oxmysql'
+-- xsound é opcional: sem ele, o celular funciona normal
+-- mas jogadores próximos NÃO ouvem música vazando
+-- Para instalar: https://github.com/Xogy/xsound
 
 -- Client-side (Lua)
 client_script 'client.lua'

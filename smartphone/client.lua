@@ -278,29 +278,36 @@ RegisterNUICallback('client:action', function(data, cb)
         cb({ ok = true })
 
     elseif action == 'takeScreenshot' then
-        -- Câmera real: screenshot-basic captura a tela do GTA
-        local webhookUrl = GetConvar('smartphone_screenshot_webhook', '')
-        if webhookUrl == '' then
-            -- Sem webhook configurado: retorna placeholder
+        -- ============================================
+        -- FASE 4: Câmera real (screenshot-basic + FiveManage)
+        -- ============================================
+        cb({ ok = true }) -- Responde imediato pro NUI
+
+        if GetResourceState('screenshot-basic') ~= 'started' then
             SendNUIMessage({ type = 'screenshot:result', url = '' })
-            cb({ ok = false, error = 'webhook_not_configured' })
-        else
-            -- screenshot-basic instalado
-            if GetResourceState('screenshot-basic') == 'started' then
-                exports['screenshot-basic']:requestScreenshotUpload(webhookUrl, 'files[]', {encoding = 'jpg', quality = 0.85}, function(data)
-                    local resp = json.decode(data)
-                    local url = ''
-                    if resp and resp.attachments and resp.attachments[1] then
-                        url = resp.attachments[1].url or ''
-                    end
-                    SendNUIMessage({ type = 'screenshot:result', url = url })
-                end)
-                cb({ ok = true })
-            else
-                SendNUIMessage({ type = 'screenshot:result', url = '' })
-                cb({ ok = false, error = 'screenshot-basic_not_running' })
-            end
+            print('[SMARTPHONE] screenshot-basic NÃO está rodando!')
+            return
         end
+
+        -- 1. Esconde o celular (pra não aparecer na foto)
+        SendNUIMessage({ type = 'screenshot:hide' })
+        Wait(250)
+
+        -- 2. Captura a tela como base64
+        exports['screenshot-basic']:requestScreenshot({encoding = 'jpg', quality = 0.85}, function(dataUri)
+            -- 3. Mostra o celular de volta
+            SendNUIMessage({ type = 'screenshot:show' })
+
+            if not dataUri or dataUri == '' then
+                SendNUIMessage({ type = 'screenshot:result', url = '' })
+                print('[SMARTPHONE] Screenshot falhou!')
+                return
+            end
+
+            -- 4. Envia pro server fazer upload (FiveManage/Fivemerr)
+            TriggerServerEvent('smartphone:screenshot:upload', dataUri)
+            print('[SMARTPHONE] Screenshot capturado! Enviando pro server...')
+        end)
 
     else
         cb({ error = 'unknown_action' })
@@ -402,3 +409,163 @@ RegisterCommand('phone', function()
 end, false)
 
 print('[SMARTPHONE] Client loaded - Keybind: M | Command: /phone')
+
+-- ============================================
+-- FASE 4: Receber URL da foto do server
+-- ============================================
+
+RegisterNetEvent('smartphone:screenshot:result')
+AddEventHandler('smartphone:screenshot:result', function(url)
+    if url and url ~= '' then
+        print('[SMARTPHONE] Foto uploaded: ' .. url)
+    else
+        print('[SMARTPHONE] Upload falhou ou sem API key')
+    end
+    SendNUIMessage({ type = 'screenshot:result', url = url or '' })
+end)
+
+print('[SMARTPHONE] Camera (screenshot-basic) loaded')
+
+-- ============================================
+-- SPOTIFY xSOUND 3D — Áudio propagado no mundo
+-- ADICIONADO NO FINAL do client.lua (Fase 3B)
+-- Se xsound NÃO estiver instalado, o celular funciona normal
+-- (jogador ouve pelo NUI, mas outros não ouvem "vazando")
+-- ============================================
+
+local hasXSound = GetResourceState('xsound') == 'started'
+local xSound = hasXSound and exports.xsound or nil
+local mySpotifyYtId = nil
+local nearbySpotify = {}
+
+if not hasXSound then
+    print('[SMARTPHONE] xSound NÃO encontrado - Spotify 3D DESATIVADO (áudio só pro jogador)')
+    print('[SMARTPHONE] Para ativar: instale xsound e adicione ensure xsound no server.cfg')
+end
+
+-- ============================================
+-- SERVER → CLIENT: Play/Toggle/Stop do Spotify
+-- ============================================
+
+RegisterNetEvent('smartphone:spotify:play')
+AddEventHandler('smartphone:spotify:play', function(youtubeId)
+    if not youtubeId or youtubeId == '' then return end
+    mySpotifyYtId = youtubeId
+    if hasXSound then
+        TriggerServerEvent('smartphone:spotify:sync', youtubeId, 0.3)
+        print('[SPOTIFY] Broadcasting 3D audio: ' .. youtubeId)
+    end
+end)
+
+RegisterNetEvent('smartphone:spotify:toggle')
+AddEventHandler('smartphone:spotify:toggle', function(playing)
+    if not hasXSound then return end
+    if not playing then
+        TriggerServerEvent('smartphone:spotify:sync', nil, 0)
+    elseif mySpotifyYtId then
+        TriggerServerEvent('smartphone:spotify:sync', mySpotifyYtId, 0.3)
+    end
+end)
+
+RegisterNetEvent('smartphone:spotify:stop')
+AddEventHandler('smartphone:spotify:stop', function()
+    mySpotifyYtId = nil
+    if hasXSound then
+        TriggerServerEvent('smartphone:spotify:sync', nil, 0)
+    end
+end)
+
+-- ============================================
+-- JOGADORES PRÓXIMOS: Ouvir música dos outros
+-- (só funciona com xSound instalado)
+-- ============================================
+
+RegisterNetEvent('smartphone:spotify:nearby')
+AddEventHandler('smartphone:spotify:nearby', function(playerId, youtubeId, volume)
+    if not hasXSound then return end
+    if playerId == GetPlayerServerId(PlayerId()) then return end
+
+    local soundId = 'spfy_' .. playerId
+
+    if not youtubeId or volume <= 0 then
+        pcall(function() xSound:Destroy(soundId) end)
+        nearbySpotify[playerId] = nil
+        return
+    end
+
+    local targetPlayer = GetPlayerFromServerId(playerId)
+    if targetPlayer == -1 then return end
+    local targetPed = GetPlayerPed(targetPlayer)
+    if not DoesEntityExist(targetPed) then return end
+
+    local myPos = GetEntityCoords(PlayerPedId())
+    local theirPos = GetEntityCoords(targetPed)
+    local dist = #(myPos - theirPos)
+
+    if dist > 50.0 then
+        pcall(function() xSound:Destroy(soundId) end)
+        nearbySpotify[playerId] = nil
+        return
+    end
+
+    -- Mesma música, só atualiza posição
+    if nearbySpotify[playerId] and nearbySpotify[playerId].youtubeId == youtubeId then
+        pcall(function() xSound:Position(soundId, theirPos) end)
+        return
+    end
+
+    pcall(function() xSound:Destroy(soundId) end)
+
+    local url = 'https://www.youtube.com/watch?v=' .. youtubeId
+    xSound:PlayUrlPos(soundId, url, volume, theirPos, false)
+    xSound:Distance(soundId, 30.0)
+
+    nearbySpotify[playerId] = { youtubeId = youtubeId, soundId = soundId }
+end)
+
+-- ============================================
+-- THREAD: Atualizar posições dos sons 3D
+-- ============================================
+
+if hasXSound then
+    CreateThread(function()
+        while true do
+            Wait(2000)
+            for playerId, info in pairs(nearbySpotify) do
+                local targetPlayer = GetPlayerFromServerId(playerId)
+                if targetPlayer == -1 then
+                    pcall(function() xSound:Destroy(info.soundId) end)
+                    nearbySpotify[playerId] = nil
+                else
+                    local targetPed = GetPlayerPed(targetPlayer)
+                    if DoesEntityExist(targetPed) then
+                        local theirPos = GetEntityCoords(targetPed)
+                        local myPos = GetEntityCoords(PlayerPedId())
+                        if #(myPos - theirPos) > 50.0 then
+                            pcall(function() xSound:Destroy(info.soundId) end)
+                            nearbySpotify[playerId] = nil
+                        else
+                            pcall(function() xSound:Position(info.soundId, theirPos) end)
+                        end
+                    else
+                        pcall(function() xSound:Destroy(info.soundId) end)
+                        nearbySpotify[playerId] = nil
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- Cleanup
+AddEventHandler('onResourceStop', function(resource)
+    if resource == GetCurrentResourceName() and hasXSound then
+        for _, info in pairs(nearbySpotify) do
+            pcall(function() xSound:Destroy(info.soundId) end)
+        end
+    end
+end)
+
+if hasXSound then
+    print('[SMARTPHONE] xSound Spotify 3D ATIVO - Range: 30m')
+end
