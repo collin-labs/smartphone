@@ -36,7 +36,7 @@ import Truco from "../apps/Truco";
 import YouTube from "../apps/YouTube";
 import LinkedIn from "../apps/LinkedIn";
 import ControlCenter from "./ControlCenter";
-import LockScreen from "./LockScreen";
+// import LockScreen from "./LockScreen"; // DESABILITADO
 import { usePusherEvent } from "../hooks/usePusher";
 import { setIncomingCall } from "../store/callState";
 import usePhone from "../store/usePhone";
@@ -404,6 +404,11 @@ export default function PhoneShell() {
       className="fixed inset-0 flex items-center justify-end pr-8 pointer-events-none"
       style={{ userSelect: "none" }}
     >
+      {/* Force hide scrollbars in CEF/FiveM */}
+      <style>{`
+        .phone-frame *::-webkit-scrollbar { display:none !important; width:0 !important; height:0 !important; }
+        .phone-frame * { scrollbar-width:none !important; -ms-overflow-style:none !important; }
+      `}</style>
       {/* Phone frame */}
       <div
         className="phone-frame pointer-events-auto relative overflow-hidden"
@@ -443,15 +448,7 @@ export default function PhoneShell() {
           )}
         </div>
 
-        {/* Lock Screen */}
-        {locked && (
-          <LockScreen
-            wallpaperIdx={settings.wallpaper}
-            hasPin={pin}
-            onUnlock={() => setLocked(false)}
-            notifications={notification ? [notification] : []}
-          />
-        )}
+        {/* Lock Screen — DESABILITADO */}
 
         {/* Control Center */}
         {showCC && (
@@ -463,12 +460,10 @@ export default function PhoneShell() {
         )}
 
         {/* Control Center trigger - top right area */}
-        {!locked && (
           <button onClick={() => setShowCC(!showCC)} style={{
             position:'absolute', top:0, right:0, width:100, height:50,
             zIndex:150, background:'transparent', border:'none', cursor:'pointer',
           }} title="Control Center" />
-        )}
 
         {/* Notification */}
         <NotificationBanner

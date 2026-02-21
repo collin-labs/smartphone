@@ -14,12 +14,79 @@
 SELECT 1;
 
 -- ============================================
+-- LIMPEZA: Dropar tabelas antigas (colunas podem estar erradas)
 -- ATENÇÃO: Isso APAGA todos os dados existentes!
 -- Só execute se você quer uma instalação limpa.
 -- ============================================
 
 SET FOREIGN_KEY_CHECKS = 0;
+DROP TABLE IF EXISTS smartphone_youtube_history;
+DROP TABLE IF EXISTS smartphone_youtube_favorites;
+DROP TABLE IF EXISTS smartphone_youtube_videos;
+DROP TABLE IF EXISTS smartphone_youtube_channels;
+DROP TABLE IF EXISTS smartphone_linkedin_connections;
+DROP TABLE IF EXISTS smartphone_linkedin_applications;
+DROP TABLE IF EXISTS smartphone_linkedin_jobs;
+DROP TABLE IF EXISTS smartphone_linkedin_likes;
+DROP TABLE IF EXISTS smartphone_linkedin_posts;
+DROP TABLE IF EXISTS smartphone_linkedin_profiles;
 
+DROP TABLE IF EXISTS smartphone_spotify_songs;
+DROP TABLE IF EXISTS smartphone_spotify_playlists;
+DROP TABLE IF EXISTS smartphone_gallery;
+DROP TABLE IF EXISTS smartphone_notes;
+DROP TABLE IF EXISTS smartphone_discord_messages;
+DROP TABLE IF EXISTS smartphone_discord_members;
+DROP TABLE IF EXISTS smartphone_discord_channels;
+DROP TABLE IF EXISTS smartphone_discord_servers;
+DROP TABLE IF EXISTS smartphone_yellowpages;
+DROP TABLE IF EXISTS smartphone_weazel_articles;
+DROP TABLE IF EXISTS smartphone_tor_store;
+DROP TABLE IF EXISTS smartphone_tor_messages;
+DROP TABLE IF EXISTS smartphone_marketplace;
+DROP TABLE IF EXISTS smartphone_ifood_menu_items;
+DROP TABLE IF EXISTS smartphone_ifood_restaurants;
+DROP TABLE IF EXISTS smartphone_ifood_orders;
+DROP TABLE IF EXISTS smartphone_waze_reports;
+DROP TABLE IF EXISTS smartphone_waze_history;
+DROP TABLE IF EXISTS smartphone_uber_rides;
+DROP TABLE IF EXISTS smartphone_paypal_transactions;
+DROP TABLE IF EXISTS smartphone_bank_transactions;
+DROP TABLE IF EXISTS smartphone_grindr_messages;
+DROP TABLE IF EXISTS smartphone_grindr_chats;
+DROP TABLE IF EXISTS smartphone_grindr_taps;
+DROP TABLE IF EXISTS smartphone_grindr_profiles;
+DROP TABLE IF EXISTS smartphone_tinder_messages;
+DROP TABLE IF EXISTS smartphone_tinder_matches;
+DROP TABLE IF EXISTS smartphone_tinder_swipes;
+DROP TABLE IF EXISTS smartphone_tinder_profiles;
+DROP TABLE IF EXISTS smartphone_tiktok_follows;
+DROP TABLE IF EXISTS smartphone_tiktok_comments;
+DROP TABLE IF EXISTS smartphone_tiktok_likes;
+DROP TABLE IF EXISTS smartphone_tiktok_videos;
+DROP TABLE IF EXISTS smartphone_tiktok_profiles;
+DROP TABLE IF EXISTS smartphone_twitter_likes;
+DROP TABLE IF EXISTS smartphone_twitter_tweets;
+DROP TABLE IF EXISTS smartphone_twitter_profiles;
+DROP TABLE IF EXISTS smartphone_instagram_stories;
+DROP TABLE IF EXISTS smartphone_instagram_follows;
+DROP TABLE IF EXISTS smartphone_instagram_comments;
+DROP TABLE IF EXISTS smartphone_instagram_likes;
+DROP TABLE IF EXISTS smartphone_instagram_posts;
+DROP TABLE IF EXISTS smartphone_instagram_profiles;
+DROP TABLE IF EXISTS smartphone_whatsapp_group_members;
+DROP TABLE IF EXISTS smartphone_whatsapp_messages;
+DROP TABLE IF EXISTS smartphone_whatsapp_participants;
+DROP TABLE IF EXISTS smartphone_whatsapp_chats;
+DROP TABLE IF EXISTS smartphone_sms_messages;
+DROP TABLE IF EXISTS smartphone_sms_participants;
+DROP TABLE IF EXISTS smartphone_sms_conversations;
+DROP TABLE IF EXISTS smartphone_service_calls;
+DROP TABLE IF EXISTS smartphone_calls;
+DROP TABLE IF EXISTS smartphone_appstore;
+DROP TABLE IF EXISTS smartphone_blocked;
+DROP TABLE IF EXISTS smartphone_contacts;
+DROP TABLE IF EXISTS smartphone_profiles;
 
 SET FOREIGN_KEY_CHECKS = 1;
 
@@ -290,7 +357,6 @@ CREATE TABLE IF NOT EXISTS smartphone_tiktok_videos (
     profile_id INT NOT NULL,
     caption TEXT DEFAULT NULL,
     thumbnail VARCHAR(500) DEFAULT '',
-    youtube_id VARCHAR(20) DEFAULT '',
     likes_count INT DEFAULT 0,
     comments_count INT DEFAULT 0,
     views_count INT DEFAULT 0,

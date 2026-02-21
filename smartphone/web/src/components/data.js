@@ -5,12 +5,13 @@ export const APPS = [
   { id: "instagram", name: "Instagram", color: "#E1306C", icon: "./apps/instagram.webp", fullscreen: true, component: "instagram" },
   { id: "twitter", name: "X", color: "#000000", icon: "./apps/twitter.webp", fullscreen: true, component: "twitter" },
   { id: "tiktok", name: "TikTok", color: "#000000", icon: "./apps/tiktok.webp", fullscreen: true, component: "tiktok" },
+  { id: "youtube", name: "YouTube", color: "#FF0000", icon: "./apps/youtube.webp", fullscreen: true, component: "youtube" },
+  { id: "linkedin", name: "LinkedIn", color: "#0A66C2", icon: "./apps/linkedin.webp", fullscreen: true, component: "linkedin" },
   { id: "discord", name: "Discord", color: "#5865F2", icon: "./apps/discord.png", fullscreen: true, component: "discord" },
   { id: "camera", name: "Câmera", color: "#333333", icon: "./apps/camera.png", fullscreen: true, component: "camera" },
   { id: "gallery", name: "Fotos", color: "#FF9F0A", icon: "./apps/photos.webp", fullscreen: true, component: "gallery" },
   { id: "contacts", name: "Contatos", color: "#8E8E93", icon: "./apps/contacts.webp", component: "contacts", fullscreen: true },
   { id: "spotify", name: "Spotify", color: "#1DB954", icon: "./apps/spotify.webp", fullscreen: true, component: "spotify" },
-  { id: "fleeca", name: "Fleeca Bank", color: "#00D68F", icon: "./apps/fleeca.webp", fullscreen: true, component: "fleeca" },
   { id: "uber", name: "Uber", color: "#000000", icon: "./apps/uber.webp", fullscreen: true, component: "uber" },
   { id: "waze", name: "Waze", color: "#33CCFF", icon: "./apps/waze.webp", fullscreen: true, component: "waze" },
   { id: "ifood", name: "iFood", color: "#EA1D2C", icon: "./apps/ifood.webp", fullscreen: true, component: "ifood" },
@@ -25,10 +26,8 @@ export const APPS = [
   { id: "notes", name: "Notas", color: "#FFD60A", icon: "./apps/notes.webp", component: "notes" },
   { id: "calculator", name: "Calculadora", color: "#636366", icon: "./apps/calculator.webp", component: "calculator" },
   { id: "settings", name: "Ajustes", color: "#636366", icon: "./apps/settings.webp", component: "settings" },
+  // --- Página 2: Extras ---
   { id: "appstore", name: "App Store", color: "#0A84FF", icon: "./apps/appstore.png", fullscreen: true, component: "appstore" },
-  // --- Página 2: Mídia + Jogos + Extras ---
-  { id: "youtube", name: "YouTube", color: "#FF0000", icon: "./apps/youtube.webp", fullscreen: true, component: "youtube" },
-  { id: "linkedin", name: "LinkedIn", color: "#0A66C2", icon: "./apps/linkedin.webp", fullscreen: true, component: "linkedin" },
   { id: "minesweeper", name: "Minas", color: "#30D158", icon: "./apps/minesweeper.webp", fullscreen: true, component: "minesweeper" },
   { id: "truco", name: "Truco", color: "#1B5E20", icon: "./apps/truco.webp", fullscreen: true, component: "truco" },
 ];
