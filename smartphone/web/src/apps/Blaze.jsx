@@ -1,460 +1,568 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchBackend } from '../hooks/useNui';
-import { usePusherEvent } from '../hooks/usePusher';
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { fetchBackend } from "../hooks/useNui";
 
-// Blaze colors
-const C = {
-  bg:'#0E0E12', surface:'#16161D', elevated:'#1E1E28',
-  text:'#FFFFFF', textSec:'#9CA3AF', textTer:'#6B7280',
-  sep:'#2A2A35', red:'#F12C4C', redDark:'#DC143C',
-  accent:'#F12C4C', green:'#00C74D', gold:'#FFB800',
-  black:'#2D2D3A', white:'#E5E7EB', input:'#1A1A24',
-  crashBg:'#0D1117',
-};
-const B = { background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center' };
-const fmtMoney = v => `R$ ${Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2})}`;
+// ============================================================
+// Blaze/Casino App — Double/Crash/Mines/Coinflip
+// Vermelho accent, dark mode, saldo, apostas
+// Handlers: blaze_init, blaze_double_bet, blaze_double_history,
+//   blaze_crash_bet, blaze_crash_cashout, blaze_crash_history,
+//   blaze_mines_start, blaze_mines_reveal, blaze_mines_cashout,
+//   blaze_coinflip_bet
+// ============================================================
 
-const GAMES = [
-  { id:'crash', name:'Crash', emoji:'📈', color:'#00C74D', desc:'Saia antes de quebrar' },
-  { id:'double', name:'Double', emoji:'🎡', color:'#F12C4C', desc:'Vermelho, preto ou branco' },
-  { id:'mines', name:'Mines', emoji:'💣', color:'#FFB800', desc:'Evite as bombas' },
-  { id:'coinflip', name:'Coinflip', emoji:'🪙', color:'#9333EA', desc:'Cara ou coroa' },
+const DOUBLE_HISTORY = [
+  { id: 1, color: "red", number: 3 },
+  { id: 2, color: "black", number: 11 },
+  { id: 3, color: "red", number: 7 },
+  { id: 4, color: "white", number: 0 },
+  { id: 5, color: "black", number: 9 },
+  { id: 6, color: "red", number: 1 },
+  { id: 7, color: "black", number: 13 },
+  { id: 8, color: "red", number: 5 },
+  { id: 9, color: "black", number: 10 },
+  { id: 10, color: "red", number: 2 },
+  { id: 11, color: "black", number: 8 },
+  { id: 12, color: "red", number: 4 },
 ];
 
-// ===== CRASH GAME =====
-function CrashGame({ balance, onBalanceChange, onBack }) {
-  const [betAmount, setBetAmount] = useState(100);
-  const [multiplier, setMultiplier] = useState(1.00);
-  const [crashed, setCrashed] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [cashedOut, setCashedOut] = useState(false);
-  const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
-  const animRef = useRef(null);
+const CRASH_HISTORY = [
+  { id: 1, multiplier: 2.34 },
+  { id: 2, multiplier: 1.12 },
+  { id: 3, multiplier: 5.67 },
+  { id: 4, multiplier: 1.45 },
+  { id: 5, multiplier: 15.2 },
+  { id: 6, multiplier: 1.03 },
+  { id: 7, multiplier: 3.89 },
+  { id: 8, multiplier: 1.78 },
+];
 
-  useEffect(() => {
-    fetchBackend('blaze_crash_history').then(r => { if(r?.history) setHistory(r.history); });
-  }, []);
+export default function BlazeApp({ onNavigate }) {
+  const [view, setView] = useState("double");
+  const [balance, setBalance] = useState(2450.0);
+  const [betAmount, setBetAmount] = useState("10");
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  const startGame = async () => {
-    if (playing || betAmount > balance || betAmount <= 0) return;
-    setCrashed(false); setCashedOut(false); setResult(null); setMultiplier(1.00);
-    const r = await fetchBackend('blaze_crash_bet', { amount: betAmount });
-    if (r?.error) { alert(r.error); return; }
-    onBalanceChange(r.balance);
-    setPlaying(true);
-    // Animate multiplier up to crash point (result comes from server)
-    const crashAt = r.crashAt || 1.5;
-    let m = 1.00;
-    const tick = () => {
-      m += 0.01 + (m * 0.003);
-      if (m >= crashAt) { setMultiplier(crashAt); setCrashed(true); setPlaying(false); setHistory(p=>[crashAt,...p].slice(0,15)); return; }
-      setMultiplier(parseFloat(m.toFixed(2)));
-      animRef.current = requestAnimationFrame(tick);
-    };
-    animRef.current = requestAnimationFrame(tick);
-  };
-
-  const cashOut = async () => {
-    if (!playing || cashedOut) return;
-    cancelAnimationFrame(animRef.current);
-    setCashedOut(true); setPlaying(false);
-    const payout = Math.round(betAmount * multiplier);
-    const r = await fetchBackend('blaze_crash_cashout', { multiplier, payout });
-    if (r?.ok) { onBalanceChange(r.balance); setResult({ won: true, payout, mult: multiplier }); }
-  };
-
-  useEffect(() => () => cancelAnimationFrame(animRef.current), []);
-
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.crashBg }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
-        <button onClick={onBack} style={B}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-        <span style={{ color:C.text, fontSize:18, fontWeight:700 }}>Crash</span>
-        <span style={{ color:C.textSec, fontSize:13, marginLeft:'auto' }}>{fmtMoney(balance)}</span>
-      </div>
-      {/* Chart area */}
-      <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
-        <div style={{ textAlign:'center' }}>
-          <div style={{
-            fontSize:56, fontWeight:900,
-            color: crashed ? C.red : cashedOut ? C.green : C.text,
-            textShadow: crashed ? `0 0 30px ${C.red}55` : cashedOut ? `0 0 30px ${C.green}55` : 'none',
-          }}>{multiplier.toFixed(2)}x</div>
-          {crashed && <div style={{ color:C.red, fontSize:16, fontWeight:600, marginTop:4 }}>CRASHED!</div>}
-          {cashedOut && result && <div style={{ color:C.green, fontSize:16, fontWeight:600, marginTop:4 }}>+{fmtMoney(result.payout)}</div>}
-        </div>
-        {/* History bar */}
-        <div style={{ position:'absolute', bottom:8, left:8, right:8, display:'flex', gap:4, overflow:'hidden' }}>
-          {history.slice(0,12).map((h,i) => (
-            <span key={i} style={{ fontSize:11, fontWeight:600, padding:'2px 6px', borderRadius:4,
-              background: h >= 2 ? C.green+'22' : C.red+'22', color: h >= 2 ? C.green : C.red,
-            }}>{Number(h).toFixed(2)}x</span>
-          ))}
-        </div>
-      </div>
-      {/* Controls */}
-      <div style={{ padding:'12px 14px 16px', background:C.surface }}>
-        <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-          {[50,100,500,1000].map(v => (
-            <button key={v} onClick={()=>setBetAmount(v)} style={{
-              flex:1, padding:'8px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
-              background: betAmount===v ? C.accent+'33' : C.elevated, color: betAmount===v ? C.accent : C.textSec,
-            }}>{v}</button>
-          ))}
-        </div>
-        {!playing ? (
-          <button onClick={startGame} disabled={betAmount>balance} style={{
-            width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-            background:C.green, color:'#fff', fontSize:16, fontWeight:700, opacity:betAmount>balance?0.5:1,
-          }}>Apostar {fmtMoney(betAmount)}</button>
-        ) : (
-          <button onClick={cashOut} style={{
-            width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-            background:C.accent, color:'#fff', fontSize:16, fontWeight:700,
-            animation:'pulse 0.5s infinite alternate',
-          }}>RETIRAR {fmtMoney(Math.round(betAmount*multiplier))}</button>
-        )}
-      </div>
-      <style>{`@keyframes pulse{from{opacity:0.85}to{opacity:1}}`}</style>
-    </div>
-  );
-}
-
-// ===== DOUBLE GAME =====
-function DoubleGame({ balance, onBalanceChange, onBack }) {
-  const [betAmount, setBetAmount] = useState(100);
-  const [choice, setChoice] = useState(null); // 'red','black','white'
+  // Double state
+  const [doubleColor, setDoubleColor] = useState(null);
+  const [doubleResult, setDoubleResult] = useState(null);
   const [spinning, setSpinning] = useState(false);
-  const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [doubleHistory, setDoubleHistory] = useState(DOUBLE_HISTORY);
 
+  // Crash state
+  const [crashMultiplier, setCrashMultiplier] = useState(1.0);
+  const [crashRunning, setCrashRunning] = useState(false);
+  const [crashBet, setCrashBet] = useState(false);
+  const [crashCashed, setCrashCashed] = useState(false);
+  const [crashHistory, setCrashHistory] = useState(CRASH_HISTORY);
+  const crashRef = useRef(null);
+
+  // Mines state
+  const [minesGrid, setMinesGrid] = useState([]);
+  const [minesStarted, setMinesStarted] = useState(false);
+  const [minesMultiplier, setMinesMultiplier] = useState(1.0);
+
+  // Coinflip state
+  const [coinResult, setCoinResult] = useState(null);
+  const [coinChoice, setCoinChoice] = useState("cara");
+  const [flipping, setFlipping] = useState(false);
+
+  // ── blaze_init ──
   useEffect(() => {
-    fetchBackend('blaze_double_history').then(r => { if(r?.history) setHistory(r.history); });
+    (async () => {
+      const res = await fetchBackend("blaze_init");
+      if (res?.balance != null) setBalance(res.balance);
+    })();
   }, []);
 
-  const play = async () => {
-    if (!choice || spinning || betAmount > balance || betAmount <= 0) return;
-    setSpinning(true); setResult(null);
-    const r = await fetchBackend('blaze_double_bet', { amount: betAmount, choice });
-    if (r?.error) { alert(r.error); setSpinning(false); return; }
-    // Animate delay
-    await new Promise(res => setTimeout(res, 1500));
-    setResult(r); onBalanceChange(r.balance);
-    setHistory(p => [r.color, ...p].slice(0,20));
-    setSpinning(false);
-  };
+  // Crash game loop
+  useEffect(() => {
+    if (!crashRunning) return;
+    crashRef.current = setInterval(() => {
+      setCrashMultiplier((prev) => {
+        const next = prev + (Math.random() * 0.05 + 0.01);
+        if (Math.random() < 0.02 || next > 20) {
+          setCrashRunning(false);
+          setCrashBet(false);
+          if (!crashCashed) {
+            // Lost
+          }
+          return 1.0;
+        }
+        return parseFloat(next.toFixed(2));
+      });
+    }, 100);
+    return () => { if (crashRef.current) clearInterval(crashRef.current); };
+  }, [crashRunning, crashCashed]);
 
-  const colors = { red:C.red, black:'#333', white:'#E5E7EB' };
+  // ── blaze_double_bet ──
+  const playDouble = useCallback(async () => {
+    if (!doubleColor || spinning) return;
+    const bet = parseFloat(betAmount) || 0;
+    if (bet <= 0 || bet > balance) return;
+    setSpinning(true);
+    setBalance((b) => b - bet);
+    const res = await fetchBackend("blaze_double_bet", { color: doubleColor, amount: bet });
+    setTimeout(() => {
+      const colors = ["red", "red", "red", "red", "red", "red", "red", "black", "black", "black", "black", "black", "black", "black", "white"];
+      const resultColor = res?.color || colors[Math.floor(Math.random() * colors.length)];
+      const num = res?.number != null ? res.number : (resultColor === "white" ? 0 : Math.floor(Math.random() * 14) + 1);
+      setDoubleResult({ id: 0, color: resultColor, number: num });
+      if (resultColor === doubleColor) {
+        const mult = resultColor === "white" ? 14 : 2;
+        setBalance((b) => b + bet * mult);
+      }
+      if (res?.balance != null) setBalance(res.balance);
+      setSpinning(false);
+    }, 2000);
+  }, [doubleColor, betAmount, balance, spinning]);
+
+  // ── blaze_double_history ──
+  const loadDoubleHistory = useCallback(async () => {
+    const res = await fetchBackend("blaze_double_history");
+    if (res?.history?.length) setDoubleHistory(res.history);
+  }, []);
+
+  // ── blaze_crash_bet ──
+  const startCrash = useCallback(async () => {
+    if (crashRunning) return;
+    const bet = parseFloat(betAmount) || 0;
+    if (bet <= 0 || bet > balance) return;
+    setCrashMultiplier(1.0);
+    setCrashRunning(true);
+    setCrashBet(true);
+    setCrashCashed(false);
+    setBalance((b) => b - bet);
+    await fetchBackend("blaze_crash_bet", { amount: bet });
+  }, [crashRunning, betAmount, balance]);
+
+  // ── blaze_crash_cashout ──
+  const cashoutCrash = useCallback(async () => {
+    setCrashCashed(true);
+    const bet = parseFloat(betAmount) || 0;
+    setBalance((b) => b + bet * crashMultiplier);
+    const res = await fetchBackend("blaze_crash_cashout", { multiplier: crashMultiplier, amount: bet });
+    if (res?.balance != null) setBalance(res.balance);
+  }, [betAmount, crashMultiplier]);
+
+  // ── blaze_crash_history ──
+  const loadCrashHistory = useCallback(async () => {
+    const res = await fetchBackend("blaze_crash_history");
+    if (res?.history?.length) setCrashHistory(res.history);
+  }, []);
+
+  // ── blaze_mines_start ──
+  const initMines = useCallback(async () => {
+    const grid = Array.from({ length: 25 }, () => ({ revealed: false, isMine: false, gem: true }));
+    const minePositions = new Set();
+    while (minePositions.size < 5) {
+      minePositions.add(Math.floor(Math.random() * 25));
+    }
+    minePositions.forEach((pos) => { grid[pos].isMine = true; grid[pos].gem = false; });
+    setMinesGrid(grid);
+    setMinesStarted(true);
+    setMinesMultiplier(1.0);
+    const bet = parseFloat(betAmount) || 0;
+    if (bet > 0 && bet <= balance) setBalance((b) => b - bet);
+    const res = await fetchBackend("blaze_mines_start", { amount: bet, mines: 5 });
+    if (res?.grid) {
+      setMinesGrid(res.grid.map((cell) => ({ revealed: false, isMine: !!cell.isMine, gem: !cell.isMine })));
+    }
+  }, [betAmount, balance]);
+
+  // ── blaze_mines_reveal ──
+  const revealMine = useCallback(async (index) => {
+    if (!minesStarted) return;
+    const res = await fetchBackend("blaze_mines_reveal", { index });
+    setMinesGrid((prev) => {
+      const next = [...prev];
+      if (next[index].revealed) return next;
+      next[index] = { ...next[index], revealed: true };
+      if (res?.isMine || next[index].isMine) {
+        next[index].isMine = true;
+        setMinesStarted(false);
+        return next.map((cell) => ({ ...cell, revealed: true }));
+      } else {
+        setMinesMultiplier((m) => parseFloat((m * 1.2).toFixed(2)));
+      }
+      return next;
+    });
+    if (res?.multiplier) setMinesMultiplier(res.multiplier);
+  }, [minesStarted]);
+
+  // ── blaze_mines_cashout ──
+  const cashoutMines = useCallback(async () => {
+    const bet = parseFloat(betAmount) || 0;
+    setBalance((b) => b + bet * minesMultiplier);
+    setMinesStarted(false);
+    const res = await fetchBackend("blaze_mines_cashout", { multiplier: minesMultiplier, amount: bet });
+    if (res?.balance != null) setBalance(res.balance);
+  }, [betAmount, minesMultiplier]);
+
+  // ── blaze_coinflip_bet ──
+  const flipCoin = useCallback(async () => {
+    if (flipping) return;
+    const bet = parseFloat(betAmount) || 0;
+    if (bet <= 0 || bet > balance) return;
+    setFlipping(true);
+    setBalance((b) => b - bet);
+    setCoinResult(null);
+    const res = await fetchBackend("blaze_coinflip_bet", { choice: coinChoice, amount: bet });
+    setTimeout(() => {
+      const result = res?.result || (Math.random() > 0.5 ? "cara" : "coroa");
+      setCoinResult(result);
+      if (result === coinChoice) {
+        setBalance((b) => b + bet * 1.95);
+      }
+      if (res?.balance != null) setBalance(res.balance);
+      setFlipping(false);
+    }, 1500);
+  }, [flipping, betAmount, balance, coinChoice]);
+
+  const tabs = [
+    { key: "double", label: "Double" },
+    { key: "crash", label: "Crash" },
+    { key: "mines", label: "Mines" },
+    { key: "coinflip", label: "Flip" },
+  ];
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
-        <button onClick={onBack} style={B}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-        <span style={{ color:C.text, fontSize:18, fontWeight:700 }}>Double</span>
-        <span style={{ color:C.textSec, fontSize:13, marginLeft:'auto' }}>{fmtMoney(balance)}</span>
+    <div style={{ width: "100%", height: "100%", background: "#0E0E12", display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px", borderBottom: "1px solid #1C1C24", flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 24, height: 24, borderRadius: 4, background: "#FF4444", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="#fff"><path d="M13 3L4 14h7l-2 7 9-11h-7l2-7z"/></svg>
+          </div>
+          <span style={{ color: "#fff", fontSize: 16, fontWeight: 800 }}>BLAZE</span>
+        </div>
+        <div style={{
+          padding: "6px 14px", borderRadius: 20, background: "#1C1C24",
+          border: "1px solid #2A2A35",
+        }}>
+          <span style={{ color: "#FFD700", fontSize: 13, fontWeight: 700 }}>R$ {balance.toFixed(2)}</span>
+        </div>
       </div>
-      {/* History */}
-      <div style={{ display:'flex', gap:3, padding:'8px 14px', overflow:'hidden' }}>
-        {history.slice(0,15).map((h,i) => (
-          <div key={i} style={{ width:24, height:24, borderRadius:4, background:colors[h]||'#333', border:h==='white'?'1px solid #666':'none', flexShrink:0 }}/>
+
+      {/* Game tabs */}
+      <div style={{ display: "flex", borderBottom: "1px solid #1C1C24", flexShrink: 0 }}>
+        {tabs.map((t) => (
+          <button key={t.key} onClick={() => setView(t.key)} style={{
+            flex: 1, padding: "10px 0", background: "none", border: "none",
+            color: view === t.key ? "#FF4444" : "#666",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            borderBottom: view === t.key ? "2px solid #FF4444" : "2px solid transparent",
+            textTransform: "uppercase",
+          }}>
+            {t.label}
+          </button>
         ))}
       </div>
-      {/* Result area */}
-      <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center' }}>
-        {spinning ? (
-          <div style={{ width:80, height:80, border:`4px solid ${C.sep}`, borderTopColor:C.accent, borderRadius:'50%', animation:'spin 0.6s linear infinite' }}/>
-        ) : result ? (
-          <div style={{ textAlign:'center' }}>
-            <div style={{ width:80, height:80, borderRadius:40, background:colors[result.color], margin:'0 auto 12px', display:'flex', alignItems:'center', justifyContent:'center',
-              border:result.color==='white'?'2px solid #999':'none', boxShadow:`0 0 30px ${colors[result.color]}44`,
-            }}><span style={{ fontSize:30 }}>{result.color==='red'?'🔴':result.color==='black'?'⚫':'⚪'}</span></div>
-            <div style={{ color:result.won?C.green:C.red, fontSize:20, fontWeight:700 }}>{result.won?`+${fmtMoney(result.payout)}`:'Perdeu!'}</div>
-          </div>
-        ) : (
-          <div style={{ color:C.textTer, fontSize:15 }}>Escolha uma cor e aposte</div>
-        )}
-      </div>
-      {/* Color choice */}
-      <div style={{ padding:'12px 14px 6px' }}>
-        <div style={{ display:'flex', gap:8, marginBottom:10 }}>
-          {[{id:'red',label:'Vermelho',color:C.red,mult:'2x'},{id:'black',label:'Preto',color:'#444',mult:'2x'},{id:'white',label:'Branco',color:'#E5E7EB',mult:'14x'}].map(c => (
-            <button key={c.id} onClick={()=>setChoice(c.id)} style={{
-              flex:1, padding:'12px 8px', borderRadius:10, border: choice===c.id?`2px solid ${c.color}`:`2px solid transparent`,
-              background:c.id==='white'?'#2A2A35':c.color+'22', cursor:'pointer', textAlign:'center',
-            }}>
-              <div style={{ width:28, height:28, borderRadius:14, background:c.color, margin:'0 auto 4px', border:c.id==='white'?'1px solid #666':'none' }}/>
-              <div style={{ color:C.text, fontSize:12, fontWeight:500 }}>{c.label}</div>
-              <div style={{ color:C.gold, fontSize:11 }}>{c.mult}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Bet controls */}
-      <div style={{ padding:'0 14px 16px' }}>
-        <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-          {[50,100,500,1000].map(v => (
-            <button key={v} onClick={()=>setBetAmount(v)} style={{
-              flex:1, padding:'8px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
-              background: betAmount===v ? C.accent+'33' : C.elevated, color: betAmount===v ? C.accent : C.textSec,
-            }}>{v}</button>
-          ))}
-        </div>
-        <button onClick={play} disabled={!choice||spinning||betAmount>balance} style={{
-          width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-          background:choice?colors[choice]||C.accent:C.elevated, color:choice==='white'?'#000':'#fff',
-          fontSize:16, fontWeight:700, opacity:(!choice||spinning||betAmount>balance)?0.5:1,
-        }}>{spinning?'Girando...':choice?`Apostar ${fmtMoney(betAmount)} no ${choice==='red'?'Vermelho':choice==='black'?'Preto':'Branco'}`:'Selecione uma cor'}</button>
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-}
 
-// ===== MINES GAME =====
-function MinesGame({ balance, onBalanceChange, onBack }) {
-  const [betAmount, setBetAmount] = useState(100);
-  const [mineCount, setMineCount] = useState(3);
-  const [grid, setGrid] = useState(null); // 5x5, null=not started
-  const [revealed, setRevealed] = useState([]);
-  const [gameOver, setGameOver] = useState(false);
-  const [won, setWon] = useState(false);
-  const [payout, setPayout] = useState(0);
-  const [gameId, setGameId] = useState(null);
-
-  const startGame = async () => {
-    if (betAmount > balance || betAmount <= 0) return;
-    const r = await fetchBackend('blaze_mines_start', { amount: betAmount, mines: mineCount });
-    if (r?.error) { alert(r.error); return; }
-    setGameId(r.gameId); setGrid(r.grid || Array(25).fill('hidden'));
-    setRevealed([]); setGameOver(false); setWon(false); setPayout(0);
-    onBalanceChange(r.balance);
-  };
-
-  const revealTile = async (idx) => {
-    if (!gameId || revealed.includes(idx) || gameOver) return;
-    const r = await fetchBackend('blaze_mines_reveal', { gameId, tile: idx });
-    if (r?.error) return;
-    if (r.mine) {
-      setGrid(r.fullGrid || grid); setRevealed(r.allRevealed || [...revealed, idx]);
-      setGameOver(true); setWon(false);
-    } else {
-      setRevealed(p => [...p, idx]); setPayout(r.currentPayout || 0);
-      if (r.fullGrid) setGrid(r.fullGrid);
-    }
-    if (r.balance !== undefined) onBalanceChange(r.balance);
-  };
-
-  const cashOutMines = async () => {
-    if (!gameId || gameOver) return;
-    const r = await fetchBackend('blaze_mines_cashout', { gameId });
-    if (r?.ok) { setGameOver(true); setWon(true); setPayout(r.payout); onBalanceChange(r.balance); if(r.fullGrid)setGrid(r.fullGrid); }
-  };
-
-  const mult = revealed.length > 0 ? (1 + revealed.length * (mineCount * 0.15)) : 1;
-
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
-        <button onClick={onBack} style={B}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-        <span style={{ color:C.text, fontSize:18, fontWeight:700 }}>Mines</span>
-        <span style={{ color:C.textSec, fontSize:13, marginLeft:'auto' }}>{fmtMoney(balance)}</span>
-      </div>
-      {/* Grid 5x5 */}
-      <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', padding:12 }}>
-        {!grid ? (
-          <div style={{ textAlign:'center', color:C.textTer }}>
-            <span style={{ fontSize:48 }}>💣</span>
-            <div style={{ marginTop:8, fontSize:15 }}>Configure e aposte</div>
-          </div>
-        ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(5,1fr)', gap:6, width:'100%', maxWidth:300 }}>
-            {Array.from({length:25}).map((_,i) => {
-              const isRevealed = revealed.includes(i);
-              const isMine = grid[i] === 'mine';
-              const isGem = grid[i] === 'gem' || (isRevealed && !isMine);
-              const showContent = isRevealed || (gameOver && (isMine || isGem));
-              return (
-                <button key={i} onClick={()=>revealTile(i)} disabled={isRevealed||gameOver} style={{
-                  aspectRatio:'1', borderRadius:8, border:'none', cursor:isRevealed||gameOver?'default':'pointer',
-                  background: showContent ? (isMine ? C.red+'33' : C.green+'33') : C.elevated,
-                  display:'flex', alignItems:'center', justifyContent:'center', fontSize:22,
-                  transition:'all 0.15s', transform: isRevealed ? 'scale(0.95)' : 'scale(1)',
+      {/* Game area */}
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+        {/* ======== DOUBLE ======== */}
+        {view === "double" && (
+          <div style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column" }}>
+            {/* History */}
+            <div style={{ display: "flex", gap: 4, marginBottom: 16, overflowX: "auto", flexShrink: 0 }}>
+              {doubleHistory.map((h) => (
+                <div key={h.id} style={{
+                  width: 28, height: 28, borderRadius: "50%", flexShrink: 0,
+                  background: h.color === "red" ? "#FF4444" : h.color === "black" ? "#2A2A35" : "#fff",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: h.color === "white" ? "#000" : "#fff",
                 }}>
-                  {showContent ? (isMine ? '💣' : '💎') : ''}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      {/* Controls */}
-      <div style={{ padding:'12px 14px 16px', background:C.surface }}>
-        {!grid || gameOver ? (
-          <>
-            {gameOver && (
-              <div style={{ textAlign:'center', marginBottom:10, color: won ? C.green : C.red, fontSize:16, fontWeight:700 }}>
-                {won ? `Ganhou ${fmtMoney(payout)}!` : 'BOOM! 💥'}
-              </div>
-            )}
-            <div style={{ display:'flex', gap:6, marginBottom:8 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ color:C.textTer, fontSize:11, marginBottom:4 }}>Minas</div>
-                <div style={{ display:'flex', gap:4 }}>
-                  {[1,3,5,8].map(m => (
-                    <button key={m} onClick={()=>setMineCount(m)} style={{
-                      flex:1, padding:'6px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
-                      background:mineCount===m?C.gold+'33':C.elevated, color:mineCount===m?C.gold:C.textSec,
-                    }}>{m}</button>
-                  ))}
+                  {h.number}
                 </div>
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-              {[50,100,500,1000].map(v => (
-                <button key={v} onClick={()=>setBetAmount(v)} style={{
-                  flex:1, padding:'8px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
-                  background:betAmount===v?C.accent+'33':C.elevated, color:betAmount===v?C.accent:C.textSec,
-                }}>{v}</button>
               ))}
             </div>
-            <button onClick={startGame} disabled={betAmount>balance} style={{
-              width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-              background:C.green, color:'#fff', fontSize:16, fontWeight:700, opacity:betAmount>balance?0.5:1,
-            }}>Apostar {fmtMoney(betAmount)}</button>
-          </>
-        ) : (
-          <button onClick={cashOutMines} style={{
-            width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-            background:C.gold, color:'#000', fontSize:16, fontWeight:700,
-          }}>Retirar {fmtMoney(Math.round(betAmount * mult))} ({mult.toFixed(2)}x)</button>
-        )}
-      </div>
-    </div>
-  );
-}
 
-// ===== COINFLIP =====
-function CoinflipGame({ balance, onBalanceChange, onBack }) {
-  const [betAmount, setBetAmount] = useState(100);
-  const [choice, setChoice] = useState(null);
-  const [flipping, setFlipping] = useState(false);
-  const [result, setResult] = useState(null);
-
-  const play = async () => {
-    if (!choice || flipping || betAmount > balance || betAmount <= 0) return;
-    setFlipping(true); setResult(null);
-    const r = await fetchBackend('blaze_coinflip_bet', { amount: betAmount, choice });
-    if (r?.error) { alert(r.error); setFlipping(false); return; }
-    await new Promise(res => setTimeout(res, 1200));
-    setResult(r); onBalanceChange(r.balance); setFlipping(false);
-  };
-
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
-        <button onClick={onBack} style={B}><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button>
-        <span style={{ color:C.text, fontSize:18, fontWeight:700 }}>Coinflip</span>
-        <span style={{ color:C.textSec, fontSize:13, marginLeft:'auto' }}>{fmtMoney(balance)}</span>
-      </div>
-      <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-        <div style={{
-          width:120, height:120, borderRadius:60,
-          background: flipping ? `linear-gradient(45deg, ${C.gold}, #B8860B)` : result ? (result.result==='cara'?C.gold:'#C0C0C0') : C.elevated,
-          display:'flex', alignItems:'center', justifyContent:'center', fontSize:50,
-          animation: flipping ? 'coinflip 0.3s linear infinite' : 'none',
-          boxShadow: `0 4px 20px ${flipping ? C.gold+'44' : 'rgba(0,0,0,0.3)'}`,
-        }}>
-          {flipping ? '🪙' : result ? (result.result==='cara'?'👑':'🌙') : '🪙'}
-        </div>
-        {result && !flipping && (
-          <div style={{ marginTop:16, textAlign:'center' }}>
-            <div style={{ color:C.text, fontSize:18, fontWeight:600, marginBottom:4 }}>
-              {result.result === 'cara' ? '👑 Cara' : '🌙 Coroa'}
+            {/* Roulette visual */}
+            <div style={{
+              height: 100, borderRadius: 8, background: "#1C1C24",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 16, overflow: "hidden", position: "relative",
+            }}>
+              {spinning ? (
+                <div style={{ color: "#FF4444", fontSize: 24, fontWeight: 800 }}>Girando...</div>
+              ) : doubleResult ? (
+                <div style={{ textAlign: "center" }}>
+                  <div style={{
+                    width: 48, height: 48, borderRadius: "50%", margin: "0 auto 8px",
+                    background: doubleResult.color === "red" ? "#FF4444" : doubleResult.color === "black" ? "#2A2A35" : "#fff",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18, fontWeight: 800, color: doubleResult.color === "white" ? "#000" : "#fff",
+                  }}>
+                    {doubleResult.number}
+                  </div>
+                  <div style={{ color: "#888", fontSize: 12 }}>
+                    {doubleResult.color === doubleColor ? "Voce ganhou!" : "Voce perdeu!"}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color: "#666", fontSize: 14 }}>Escolha uma cor e aposte</div>
+              )}
             </div>
-            <div style={{ color:result.won?C.green:C.red, fontSize:20, fontWeight:700 }}>
-              {result.won ? `+${fmtMoney(result.payout)}` : 'Perdeu!'}
+
+            {/* Color selection */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              {[{ c: "red", bg: "#FF4444", label: "Vermelho 2x" }, { c: "white", bg: "#fff", label: "Branco 14x" }, { c: "black", bg: "#2A2A35", label: "Preto 2x" }].map((opt) => (
+                <button key={opt.c} onClick={() => setDoubleColor(opt.c)} style={{
+                  flex: 1, padding: "10px 0", borderRadius: 8,
+                  background: opt.bg, border: doubleColor === opt.c ? "2px solid #FFD700" : "2px solid transparent",
+                  color: opt.c === "white" ? "#000" : "#fff",
+                  fontSize: 11, fontWeight: 700, cursor: "pointer",
+                }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Bet input */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                style={{
+                  flex: 1, padding: "10px 12px", borderRadius: 8,
+                  background: "#1C1C24", border: "1px solid #2A2A35",
+                  color: "#fff", fontSize: 14, outline: "none",
+                }}
+              />
+              {[10, 50, 100].map((v) => (
+                <button key={v} onClick={() => setBetAmount(String(v))} style={{
+                  padding: "10px 12px", borderRadius: 8,
+                  background: "#1C1C24", border: "1px solid #2A2A35",
+                  color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}>
+                  {v}
+                </button>
+              ))}
+            </div>
+
+            <button onClick={playDouble} style={{
+              width: "100%", padding: "14px", borderRadius: 8,
+              background: spinning ? "#333" : "#FF4444",
+              border: "none", color: "#fff", fontSize: 15, fontWeight: 700,
+              cursor: spinning ? "default" : "pointer",
+            }}>
+              {spinning ? "Girando..." : "Apostar"}
+            </button>
+          </div>
+        )}
+
+        {/* ======== CRASH ======== */}
+        {view === "crash" && (
+          <div style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column" }}>
+            {/* History */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto", flexShrink: 0 }}>
+              {crashHistory.map((h) => (
+                <span key={h.id} style={{
+                  padding: "4px 8px", borderRadius: 4, flexShrink: 0,
+                  background: h.multiplier >= 2 ? "rgba(0,200,83,0.15)" : "rgba(255,68,68,0.15)",
+                  color: h.multiplier >= 2 ? "#00C853" : "#FF4444",
+                  fontSize: 12, fontWeight: 700,
+                }}>
+                  {h.multiplier}x
+                </span>
+              ))}
+            </div>
+
+            {/* Crash display */}
+            <div style={{
+              flex: 1, minHeight: 160, borderRadius: 8, background: "#1C1C24",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              marginBottom: 16, position: "relative",
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{
+                  color: crashRunning ? (crashMultiplier >= 2 ? "#00C853" : "#FF4444") : "#666",
+                  fontSize: 48, fontWeight: 900,
+                }}>
+                  {crashRunning ? `${crashMultiplier.toFixed(2)}x` : "1.00x"}
+                </div>
+                {!crashRunning && !crashBet && (
+                  <div style={{ color: "#666", fontSize: 13, marginTop: 8 }}>Aguardando proxima rodada...</div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <input
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                style={{
+                  flex: 1, padding: "10px 12px", borderRadius: 8,
+                  background: "#1C1C24", border: "1px solid #2A2A35",
+                  color: "#fff", fontSize: 14, outline: "none",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={startCrash} style={{
+                flex: 1, padding: "14px", borderRadius: 8,
+                background: crashRunning ? "#333" : "#FF4444",
+                border: "none", color: "#fff", fontSize: 15, fontWeight: 700,
+                cursor: crashRunning ? "default" : "pointer",
+              }}>
+                Apostar
+              </button>
+              {crashRunning && crashBet && !crashCashed && (
+                <button onClick={cashoutCrash} style={{
+                  flex: 1, padding: "14px", borderRadius: 8,
+                  background: "#00C853", border: "none",
+                  color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                }}>
+                  Retirar {crashMultiplier.toFixed(2)}x
+                </button>
+              )}
             </div>
           </div>
         )}
-      </div>
-      <div style={{ padding:'12px 14px 16px', background:C.surface }}>
-        <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-          {[{id:'cara',label:'👑 Cara'},{id:'coroa',label:'🌙 Coroa'}].map(c => (
-            <button key={c.id} onClick={()=>setChoice(c.id)} style={{
-              flex:1, padding:'14px', borderRadius:10, cursor:'pointer', fontSize:16, fontWeight:600,
-              border: choice===c.id ? `2px solid ${C.gold}` : `2px solid ${C.sep}`, background:C.elevated, color:C.text,
-            }}>{c.label}</button>
-          ))}
-        </div>
-        <div style={{ display:'flex', gap:6, marginBottom:10 }}>
-          {[50,100,500,1000].map(v => (
-            <button key={v} onClick={()=>setBetAmount(v)} style={{
-              flex:1, padding:'8px', borderRadius:6, border:'none', cursor:'pointer', fontSize:13, fontWeight:600,
-              background:betAmount===v?C.accent+'33':C.elevated, color:betAmount===v?C.accent:C.textSec,
-            }}>{v}</button>
-          ))}
-        </div>
-        <button onClick={play} disabled={!choice||flipping||betAmount>balance} style={{
-          width:'100%', padding:'14px', borderRadius:8, border:'none', cursor:'pointer',
-          background:C.gold, color:'#000', fontSize:16, fontWeight:700,
-          opacity:(!choice||flipping||betAmount>balance)?0.5:1,
-        }}>{flipping?'Girando...':'Apostar'}</button>
-      </div>
-      <style>{`@keyframes coinflip{0%{transform:rotateY(0)}100%{transform:rotateY(360deg)}}`}</style>
-    </div>
-  );
-}
 
-// ===== MAIN LOBBY =====
-export default function Blaze({ onNavigate }) {
-  const [activeGame, setActiveGame] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetchBackend('blaze_init').then(r => {
-      if (r?.balance !== undefined) setBalance(r.balance);
-      setLoading(false);
-    });
-  }, []);
-
-  const onBalanceChange = useCallback((b) => setBalance(b), []);
-
-  if (activeGame === 'crash') return <CrashGame balance={balance} onBalanceChange={onBalanceChange} onBack={()=>setActiveGame(null)} />;
-  if (activeGame === 'double') return <DoubleGame balance={balance} onBalanceChange={onBalanceChange} onBack={()=>setActiveGame(null)} />;
-  if (activeGame === 'mines') return <MinesGame balance={balance} onBalanceChange={onBalanceChange} onBack={()=>setActiveGame(null)} />;
-  if (activeGame === 'coinflip') return <CoinflipGame balance={balance} onBalanceChange={onBalanceChange} onBack={()=>setActiveGame(null)} />;
-
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      {/* Header */}
-      <div style={{ padding:'16px', background:`linear-gradient(135deg, ${C.red}, #8B0000)`, borderRadius:'0 0 20px 20px' }}>
-        <div style={{ color:'#fff', fontSize:24, fontWeight:900, letterSpacing:1, marginBottom:4 }}>BLAZE</div>
-        <div style={{ color:'rgba(255,255,255,0.6)', fontSize:13, marginBottom:8 }}>Aposte e ganhe</div>
-        <div style={{ color:'rgba(255,255,255,0.7)', fontSize:13 }}>Saldo</div>
-        <div style={{ color:'#fff', fontSize:28, fontWeight:700 }}>{loading ? '...' : fmtMoney(balance)}</div>
-      </div>
-
-      {/* Games grid */}
-      <div style={{ flex:1, overflow:'auto', padding:16 }}>
-        <div style={{ color:C.textSec, fontSize:12, fontWeight:600, textTransform:'uppercase', letterSpacing:1, marginBottom:12 }}>Jogos</div>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-          {GAMES.map(g => (
-            <button key={g.id} onClick={()=>setActiveGame(g.id)} style={{
-              padding:'20px 14px', borderRadius:14, border:'none', cursor:'pointer',
-              background:C.surface, display:'flex', flexDirection:'column', alignItems:'center', gap:8,
-              transition:'transform 0.15s',
-            }}>
+        {/* ======== MINES ======== */}
+        {view === "mines" && (
+          <div style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column" }}>
+            {minesStarted && (
               <div style={{
-                width:52, height:52, borderRadius:14, background:g.color+'22',
-                display:'flex', alignItems:'center', justifyContent:'center', fontSize:28,
-              }}>{g.emoji}</div>
-              <div style={{ color:C.text, fontSize:15, fontWeight:600 }}>{g.name}</div>
-              <div style={{ color:C.textTer, fontSize:11 }}>{g.desc}</div>
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginBottom: 12, padding: "8px 12px", borderRadius: 8, background: "#1C1C24",
+              }}>
+                <span style={{ color: "#888", fontSize: 13 }}>Multiplicador:</span>
+                <span style={{ color: "#FFD700", fontSize: 16, fontWeight: 700 }}>{minesMultiplier}x</span>
+              </div>
+            )}
+
+            {/* Grid */}
+            <div style={{
+              display: "grid", gridTemplateColumns: "repeat(5, 1fr)",
+              gap: 6, marginBottom: 16,
+            }}>
+              {(minesGrid.length > 0 ? minesGrid : Array.from({ length: 25 }, () => ({ revealed: false, isMine: false, gem: true }))).map((cell, i) => (
+                <button
+                  key={i}
+                  onClick={() => minesStarted && revealMine(i)}
+                  style={{
+                    aspectRatio: "1/1", borderRadius: 8,
+                    background: cell.revealed
+                      ? (cell.isMine ? "#FF4444" : "#00C853")
+                      : "#1C1C24",
+                    border: "1px solid #2A2A35",
+                    cursor: minesStarted && !cell.revealed ? "pointer" : "default",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 18,
+                  }}
+                >
+                  {cell.revealed ? (cell.isMine ? (
+                    <svg width={20} height={20} viewBox="0 0 24 24" fill="#fff">
+                      <circle cx="12" cy="12" r="6"/><line x1="12" y1="2" x2="12" y2="6" stroke="#fff" strokeWidth="2"/>
+                      <line x1="12" y1="18" x2="12" y2="22" stroke="#fff" strokeWidth="2"/>
+                      <line x1="2" y1="12" x2="6" y2="12" stroke="#fff" strokeWidth="2"/>
+                      <line x1="18" y1="12" x2="22" y2="12" stroke="#fff" strokeWidth="2"/>
+                    </svg>
+                  ) : (
+                    <svg width={20} height={20} viewBox="0 0 24 24" fill="#fff">
+                      <polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8"/>
+                    </svg>
+                  )) : null}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {!minesStarted ? (
+                <button onClick={initMines} style={{
+                  flex: 1, padding: "14px", borderRadius: 8,
+                  background: "#FF4444", border: "none",
+                  color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                }}>
+                  Iniciar Jogo
+                </button>
+              ) : (
+                <button onClick={cashoutMines} style={{
+                  flex: 1, padding: "14px", borderRadius: 8,
+                  background: "#00C853", border: "none",
+                  color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer",
+                }}>
+                  Retirar {minesMultiplier}x
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ======== COINFLIP ======== */}
+        {view === "coinflip" && (
+          <div style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", alignItems: "center" }}>
+            {/* Coin */}
+            <div style={{
+              width: 120, height: 120, borderRadius: "50%", marginTop: 24, marginBottom: 24,
+              background: coinResult
+                ? (coinResult === coinChoice ? "linear-gradient(135deg, #FFD700, #FFA500)" : "linear-gradient(135deg, #FF4444, #CC0000)")
+                : "linear-gradient(135deg, #FFD700, #FFA500)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              border: "4px solid #333",
+              animation: flipping ? "spin 0.5s linear infinite" : "none",
+            }}>
+              <span style={{ fontSize: 36, fontWeight: 900, color: "#000" }}>
+                {flipping ? "?" : coinResult ? (coinResult === "cara" ? "C" : "K") : "?"}
+              </span>
+            </div>
+            <style>{`@keyframes spin { 0% { transform: rotateY(0deg) } 100% { transform: rotateY(360deg) } }`}</style>
+
+            {coinResult && !flipping && (
+              <div style={{
+                color: coinResult === coinChoice ? "#00C853" : "#FF4444",
+                fontSize: 18, fontWeight: 700, marginBottom: 16,
+              }}>
+                {coinResult === coinChoice ? "Voce ganhou!" : "Voce perdeu!"}
+              </div>
+            )}
+
+            {/* Choice */}
+            <div style={{ display: "flex", gap: 12, marginBottom: 24, width: "100%" }}>
+              {["cara", "coroa"].map((side) => (
+                <button key={side} onClick={() => setCoinChoice(side)} style={{
+                  flex: 1, padding: "12px", borderRadius: 8,
+                  background: coinChoice === side ? "#FFD700" : "#1C1C24",
+                  border: coinChoice === side ? "2px solid #FFD700" : "2px solid #2A2A35",
+                  color: coinChoice === side ? "#000" : "#fff",
+                  fontSize: 14, fontWeight: 700, cursor: "pointer",
+                  textTransform: "capitalize",
+                }}>
+                  {side} {side === "cara" ? "(C)" : "(K)"}
+                </button>
+              ))}
+            </div>
+
+            {/* Bet */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12, width: "100%" }}>
+              <input
+                value={betAmount}
+                onChange={(e) => setBetAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                style={{
+                  flex: 1, padding: "10px 12px", borderRadius: 8,
+                  background: "#1C1C24", border: "1px solid #2A2A35",
+                  color: "#fff", fontSize: 14, outline: "none",
+                }}
+              />
+              <span style={{ color: "#888", fontSize: 12, alignSelf: "center" }}>x1.95</span>
+            </div>
+
+            <button onClick={flipCoin} style={{
+              width: "100%", padding: "14px", borderRadius: 8,
+              background: flipping ? "#333" : "#FF4444",
+              border: "none", color: "#fff", fontSize: 15, fontWeight: 700,
+              cursor: flipping ? "default" : "pointer",
+            }}>
+              {flipping ? "Girando..." : "Apostar"}
             </button>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

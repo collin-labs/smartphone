@@ -35,6 +35,8 @@ import Camera from "../apps/Camera";
 import Truco from "../apps/Truco";
 import YouTube from "../apps/YouTube";
 import LinkedIn from "../apps/LinkedIn";
+import Chrome from "../apps/Chrome";
+import Twitch from "../apps/Twitch";
 import ControlCenter from "./ControlCenter";
 // import LockScreen from "./LockScreen"; // DESABILITADO
 import { usePusherEvent } from "../hooks/usePusher";
@@ -376,6 +378,10 @@ export default function PhoneShell() {
         return <YouTube onNavigate={handleNavigate} />;
       case "linkedin":
         return <LinkedIn onNavigate={handleNavigate} />;
+      case "chrome":
+        return <Chrome onNavigate={handleNavigate} />;
+      case "twitch":
+        return <Twitch onNavigate={handleNavigate} />;
       default:
         // Placeholder for unimplemented apps
         return (

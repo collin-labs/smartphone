@@ -26,10 +26,13 @@ export const APPS = [
   { id: "notes", name: "Notas", color: "#FFD60A", icon: "./apps/notes.webp", component: "notes" },
   { id: "calculator", name: "Calculadora", color: "#636366", icon: "./apps/calculator.webp", component: "calculator" },
   { id: "settings", name: "Ajustes", color: "#636366", icon: "./apps/settings.webp", component: "settings" },
+  { id: "fleeca", name: "Fleeca Bank", color: "#1A3A5C", icon: "./apps/fleeca.webp", fullscreen: true, component: "fleeca" },
   // --- Página 2: Extras ---
-  { id: "appstore", name: "App Store", color: "#0A84FF", icon: "./apps/appstore.png", fullscreen: true, component: "appstore" },
+  { id: "appstore", name: "App Store", color: "#0A84FF", icon: "./apps/appstore.webp", fullscreen: true, component: "appstore" },
   { id: "minesweeper", name: "Minas", color: "#30D158", icon: "./apps/minesweeper.webp", fullscreen: true, component: "minesweeper" },
   { id: "truco", name: "Truco", color: "#1B5E20", icon: "./apps/truco.webp", fullscreen: true, component: "truco" },
+  { id: "chrome", name: "Chrome", color: "#4285F4", icon: "./apps/chrome.webp", fullscreen: true, component: "chrome" },
+  { id: "twitch", name: "Twitch", color: "#9146FF", icon: "./apps/twitch.webp", fullscreen: true, component: "twitch" },
 ];
 
 export const DOCK_APPS = [

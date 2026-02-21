@@ -1,239 +1,425 @@
-import { useState, useEffect, useCallback } from 'react';
-import { fetchBackend, fetchClient } from '../hooks/useNui';
-import { usePusherEvent } from '../hooks/usePusher';
+import React, { useState, useEffect, useCallback } from "react";
+import { fetchBackend } from "../hooks/useNui";
 
-// Weazel News colors — CNN/news dark mode
-const C = {
-  bg:'#0A0A0A', surface:'#1A1A1A', elevated:'#242424',
-  text:'#FFFFFF', textSec:'#A0A0A0', textTer:'#666666',
-  sep:'#2A2A2A', red:'#CC0000', redLight:'#FF1A1A',
-  accent:'#CC0000', live:'#FF0000', blue:'#2196F3',
-  breaking:'#FF0000', tag:'#333333',
+// ============================================================
+// Weazel News App — Artigos, breaking news, publicar noticia
+// Telas: feed | article | publish
+// Handlers: weazel_init, weazel_publish
+// ============================================================
+
+const BREAKING = {
+  title: "URGENTE: Tiroteio na Vinewood Blvd deixa 3 feridos",
+  time: "Agora",
 };
 
-const B = { background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center' };
+const ARTICLES = [
+  {
+    id: 1,
+    title: "Prefeitura anuncia novo sistema de transporte publico",
+    summary: "O prefeito de Los Santos apresentou hoje o projeto do novo BRT que vai ligar o centro a Paleto Bay.",
+    author: "Jessica Torres",
+    category: "Politica",
+    time: "2h atras",
+    gradient: "linear-gradient(135deg, #667eea, #764ba2)",
+    content: "O prefeito de Los Santos apresentou hoje o projeto ambicioso do novo BRT que vai conectar o centro da cidade ate Paleto Bay, passando por Sandy Shores. O investimento previsto e de R$ 450 milhoes e as obras devem comecar no proximo semestre. A populacao tera acesso a consultas publicas a partir da proxima semana.",
+    comments: 42,
+  },
+  {
+    id: 2,
+    title: "Policia Federal apreende carregamento recorde no porto",
+    summary: "Operacao Maremoto resultou na maior apreensao de contrabando da historia de Los Santos.",
+    author: "Roberto Mendes",
+    category: "Seguranca",
+    time: "4h atras",
+    gradient: "linear-gradient(135deg, #f093fb, #f5576c)",
+    content: "A Policia Federal realizou na madrugada de hoje a maior apreensao de contrabando da historia do porto de Los Santos. A Operacao Maremoto, que durou 6 meses de investigacao, resultou na captura de 3 toneladas de mercadorias ilegais e na prisao de 12 suspeitos. O delegado responsavel afirmou que a operacao desarticulou uma quadrilha que atuava ha mais de 5 anos.",
+    comments: 89,
+  },
+  {
+    id: 3,
+    title: "Evento de carros classicos reune 500 veiculos em LS",
+    summary: "A exposicao no Pier de Santa Maria atraiu entusiastas de todo o estado.",
+    author: "Ana Beatriz",
+    category: "Cultura",
+    time: "6h atras",
+    gradient: "linear-gradient(135deg, #4facfe, #00f2fe)",
+    content: "O tradicional evento de carros classicos de Los Santos bateu recorde de publico neste fim de semana. Mais de 500 veiculos foram expostos no Pier de Santa Maria, atraindo mais de 10 mil visitantes. Destaques para um Imponte Dukes 1969 restaurado e um Vapid Ellie original.",
+    comments: 34,
+  },
+  {
+    id: 4,
+    title: "Hospital Central inaugura ala de emergencia moderna",
+    summary: "Investimento de R$ 80 milhoes trouxe equipamentos de ultima geracao.",
+    author: "Carlos Henrique",
+    category: "Saude",
+    time: "8h atras",
+    gradient: "linear-gradient(135deg, #43e97b, #38f9d7)",
+    content: "O Hospital Central Pillbox Hill inaugurou nesta segunda-feira a nova ala de emergencia, equipada com tecnologia de ponta. O investimento de R$ 80 milhoes permitiu a aquisicao de 15 novos leitos de UTI, equipamentos de diagnostico por imagem e um centro cirurgico robotizado.",
+    comments: 21,
+  },
+  {
+    id: 5,
+    title: "Los Santos FC vence classico e assume lideranca",
+    summary: "Gol nos acrescimos garantiu vitoria por 2x1 sobre o rival.",
+    author: "Diego Fernandes",
+    category: "Esportes",
+    time: "10h atras",
+    gradient: "linear-gradient(135deg, #fa709a, #fee140)",
+    content: "Em partida emocionante no Maze Bank Arena, o Los Santos FC venceu o classico contra o Blaine County United por 2 a 1, com gol nos acrescimos de Rafael Santos. Com a vitoria, o time assume a lideranca do campeonato estadual com 3 pontos de vantagem.",
+    comments: 156,
+  },
+];
 
-const Ic = {
-  back: <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>,
-  edit: <svg width="22" height="22" viewBox="0 0 24 24" fill="#fff"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>,
-  send: <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>,
-  live: <svg width="14" height="14" viewBox="0 0 24 24" fill={C.live}><circle cx="12" cy="12" r="10"/></svg>,
-  clock: <svg width="14" height="14" viewBox="0 0 24 24" fill={C.textSec}><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>,
-};
+export default function WeazelNewsApp({ onNavigate }) {
+  const [view, setView] = useState("feed");
+  const [selectedArticle, setSelectedArticle] = useState(ARTICLES[0]);
+  const [publishTitle, setPublishTitle] = useState("");
+  const [publishContent, setPublishContent] = useState("");
+  const [publishCategory, setPublishCategory] = useState("Geral");
+  const [filter, setFilter] = useState("Todos");
+  const [articles, setArticles] = useState(ARTICLES);
 
-const CATEGORIES = ['Tudo','Urgente','Cidade','Crime','Política','Esporte','Economia'];
+  const categories = ["Todos", "Politica", "Seguranca", "Cultura", "Saude", "Esportes"];
+  const filteredArticles = filter === "Todos" ? articles : articles.filter((a) => a.category === filter);
 
-const timeAgo = (d) => {
-  if (!d) return '';
-  const diff = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
-  if (diff < 60) return 'agora';
-  if (diff < 3600) return `${Math.floor(diff/60)}min`;
-  if (diff < 86400) return `${Math.floor(diff/3600)}h`;
-  return `${Math.floor(diff/86400)}d`;
-};
-
-export default function WeazelNews({ onNavigate }) {
-  const [view, setView] = useState('feed');
-  const [articles, setArticles] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState('Tudo');
-  const [selectedArticle, setSelectedArticle] = useState(null);
-  const [isJournalist, setIsJournalist] = useState(false);
-  // Create article
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [category, setCategory] = useState('Cidade');
-  const [isBreaking, setIsBreaking] = useState(false);
-
+  // ── weazel_init ──
   useEffect(() => {
-    fetchBackend('weazel_init').then(r => {
-      if (r?.articles) setArticles(r.articles);
-      if (r?.isJournalist) setIsJournalist(r.isJournalist);
-      setLoading(false);
-    });
+    (async () => {
+      const res = await fetchBackend("weazel_init");
+      if (res?.articles?.length) {
+        setArticles(res.articles.map((a, i) => ({
+          id: a.id || i + 1, title: a.title || "?", summary: a.summary || "",
+          author: a.author || "Redacao", category: a.category || "Geral",
+          time: a.time || "", content: a.content || a.summary || "",
+          comments: a.comments || 0,
+          gradient: ARTICLES[i % ARTICLES.length]?.gradient || "linear-gradient(135deg, #667eea, #764ba2)",
+        })));
+      }
+    })();
   }, []);
 
-  usePusherEvent('WEAZEL_BREAKING', useCallback((d) => {
-    if (d?.article) setArticles(p => [{ ...d.article, isBreaking: true }, ...p]);
-    fetchClient('playSound', { sound: 'notification' });
-  }, []));
+  // ── weazel_publish ──
+  const handlePublish = useCallback(async () => {
+    if (!publishTitle.trim() || !publishContent.trim()) return;
+    await fetchBackend("weazel_publish", {
+      title: publishTitle.trim(),
+      content: publishContent.trim(),
+      category: publishCategory,
+    });
+    setPublishTitle("");
+    setPublishContent("");
+    setView("feed");
+  }, [publishTitle, publishContent, publishCategory]);
 
-  const publishArticle = async () => {
-    if (!title.trim() || !body.trim()) return;
-    const r = await fetchBackend('weazel_publish', { title: title.trim(), body: body.trim(), category, isBreaking });
-    if (r?.ok) {
-      if (r.article) setArticles(p => [r.article, ...p]);
-      setTitle(''); setBody(''); setCategory('Cidade'); setIsBreaking(false); setView('feed');
-    }
-  };
-
-  const filtered = activeCategory === 'Tudo' ? articles
-    : activeCategory === 'Urgente' ? articles.filter(a => a.is_breaking)
-    : articles.filter(a => a.category === activeCategory);
-
-  // ===== ARTICLE DETAIL =====
-  if (view === 'detail' && selectedArticle) return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 16px', borderBottom:`0.5px solid ${C.sep}` }}>
-        <button onClick={()=>{setView('feed');setSelectedArticle(null);}} style={B}>{Ic.back}</button>
-        <span style={{ color:C.text, fontSize:16, fontWeight:600, flex:1 }}>Weazel News</span>
-      </div>
-      <div style={{ flex:1, overflow:'auto', padding:16 }}>
-        {selectedArticle.is_breaking && (
-          <div style={{ display:'inline-flex', alignItems:'center', gap:4, background:C.breaking, borderRadius:4, padding:'3px 8px', marginBottom:10 }}>
-            {Ic.live}
-            <span style={{ color:'#fff', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>Urgente</span>
-          </div>
-        )}
-        <div style={{ color:C.text, fontSize:22, fontWeight:700, lineHeight:1.3, marginBottom:12 }}>{selectedArticle.title}</div>
-        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:16 }}>
-          <span style={{ color:C.accent, fontSize:13, fontWeight:600 }}>{selectedArticle.author_name || 'Redação'}</span>
-          <span style={{ color:C.textTer, fontSize:13 }}>•</span>
-          <span style={{ color:C.textSec, fontSize:13 }}>{timeAgo(selectedArticle.created_at)}</span>
-          {selectedArticle.category && (
-            <>
-              <span style={{ color:C.textTer, fontSize:13 }}>•</span>
-              <span style={{ background:C.tag, color:C.textSec, fontSize:11, padding:'2px 8px', borderRadius:4 }}>{selectedArticle.category}</span>
-            </>
-          )}
-        </div>
-        <div style={{ color:C.text, fontSize:15, lineHeight:1.7, whiteSpace:'pre-wrap' }}>{selectedArticle.body}</div>
-      </div>
-    </div>
-  );
-
-  // ===== CREATE ARTICLE =====
-  if (view === 'create') return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', borderBottom:`0.5px solid ${C.sep}` }}>
-        <button onClick={()=>setView('feed')} style={{ ...B, color:C.textSec, fontSize:15 }}>Cancelar</button>
-        <span style={{ color:C.text, fontSize:16, fontWeight:700 }}>Nova matéria</span>
-        <button onClick={publishArticle} disabled={!title.trim()||!body.trim()} style={{
-          ...B, background:(!title.trim()||!body.trim())?C.elevated:C.accent,
-          padding:'6px 16px', borderRadius:16, opacity:(!title.trim()||!body.trim())?0.5:1,
+  // ============================================================
+  // PUBLISH VIEW
+  // ============================================================
+  if (view === "publish") {
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#0f0f0f", display: "flex", flexDirection: "column" }}>
+        <div style={{
+          display: "flex", alignItems: "center", padding: "12px 16px",
+          borderBottom: "1px solid #222",
         }}>
-          <span style={{ color:'#fff', fontSize:14, fontWeight:600 }}>Publicar</span>
-        </button>
-      </div>
-      <div style={{ flex:1, overflow:'auto', padding:16 }}>
-        <input type="text" placeholder="Título da matéria" value={title} onChange={e=>setTitle(e.target.value)}
-          style={{ width:'100%', background:'transparent', border:'none', outline:'none', color:C.text, fontSize:20, fontWeight:700, marginBottom:16, fontFamily:'inherit' }} />
-
-        {/* Category */}
-        <div style={{ display:'flex', gap:6, marginBottom:16, flexWrap:'wrap' }}>
-          {CATEGORIES.filter(c=>c!=='Tudo'&&c!=='Urgente').map(c => (
-            <button key={c} onClick={()=>setCategory(c)} style={{
-              padding:'6px 14px', borderRadius:16, border:'none', cursor:'pointer', fontSize:13,
-              background: category===c ? C.accent : C.elevated,
-              color: category===c ? '#fff' : C.textSec,
-            }}>{c}</button>
-          ))}
+          <button onClick={() => setView("feed")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span style={{ color: "#fff", fontSize: 16, fontWeight: 700, marginLeft: 12, flex: 1 }}>Publicar Noticia</span>
+          <button onClick={handlePublish} style={{
+            background: "#D32F2F", border: "none", borderRadius: 6,
+            padding: "6px 16px", color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer",
+          }}>
+            Publicar
+          </button>
         </div>
 
-        {/* Breaking toggle */}
-        <button onClick={()=>setIsBreaking(!isBreaking)} style={{
-          display:'flex', alignItems:'center', gap:8, padding:'10px 14px', borderRadius:8, border:'none', cursor:'pointer',
-          background: isBreaking ? C.breaking+'22' : C.elevated, marginBottom:16, width:'100%',
-        }}>
-          {Ic.live}
-          <span style={{ color: isBreaking ? C.breaking : C.textSec, fontSize:14, fontWeight:600 }}>
-            {isBreaking ? '🔴 URGENTE — Notificação global' : 'Marcar como urgente'}
-          </span>
-        </button>
-
-        <textarea placeholder="Escreva a matéria completa..." value={body} onChange={e=>setBody(e.target.value)}
-          style={{
-            width:'100%', minHeight:200, background:C.surface, border:'none', outline:'none',
-            color:C.text, fontSize:15, lineHeight:1.6, borderRadius:8, padding:14,
-            fontFamily:'inherit', resize:'vertical',
-          }} />
-      </div>
-    </div>
-  );
-
-  // ===== FEED =====
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      {/* Header */}
-      <div style={{ padding:'14px 16px 8px' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-          <div>
-            <span style={{ color:C.red, fontSize:22, fontWeight:900, letterSpacing:-0.5 }}>WEAZEL</span>
-            <span style={{ color:C.text, fontSize:22, fontWeight:300, marginLeft:4 }}>NEWS</span>
+        <div style={{ flex: 1, overflowY: "auto", padding: 16 }}>
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: "#888", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase" }}>Titulo</div>
+            <input
+              value={publishTitle}
+              onChange={(e) => setPublishTitle(e.target.value)}
+              placeholder="Titulo da noticia..."
+              style={{
+                width: "100%", padding: "12px", borderRadius: 8,
+                background: "#1a1a1a", border: "1px solid #333",
+                color: "#fff", fontSize: 15, fontWeight: 600, outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
           </div>
-          {isJournalist && (
-            <button onClick={()=>setView('create')} style={{
-              ...B, background:C.accent, width:38, height:38, borderRadius:19,
-            }}>{Ic.edit}</button>
-          )}
-        </div>
 
-        {/* Category tabs */}
-        <div style={{ display:'flex', gap:6, overflow:'auto', paddingBottom:4 }}>
-          {CATEGORIES.map(c => (
-            <button key={c} onClick={()=>setActiveCategory(c)} style={{
-              padding:'6px 14px', borderRadius:16, border:'none', cursor:'pointer', fontSize:13, fontWeight:500,
-              whiteSpace:'nowrap', flexShrink:0,
-              background: activeCategory===c ? C.accent : C.elevated,
-              color: activeCategory===c ? '#fff' : C.textSec,
-            }}>{c === 'Urgente' ? '🔴 Urgente' : c}</button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ height:0.5, background:C.sep }}/>
-
-      {/* Articles */}
-      <div style={{ flex:1, overflow:'auto' }}>
-        {loading ? (
-          <div style={{ display:'flex', justifyContent:'center', paddingTop:40 }}>
-            <div style={{ width:24, height:24, border:`2px solid ${C.sep}`, borderTopColor:C.accent, borderRadius:'50%', animation:'spin 0.8s linear infinite' }}/>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ textAlign:'center', padding:40, color:C.textSec }}>
-            <div style={{ fontSize:40, marginBottom:8 }}>📰</div>
-            <div style={{ fontSize:14 }}>Nenhuma notícia</div>
-            {isJournalist && <div style={{ color:C.accent, fontSize:13, marginTop:4 }}>Toque em + para criar</div>}
-          </div>
-        ) : filtered.map((a, i) => (
-          <div key={a.id || i} onClick={()=>{setSelectedArticle(a);setView('detail');}}
-            style={{ padding:'14px 16px', borderBottom:`0.5px solid ${C.sep}`, cursor:'pointer' }}>
-
-            {/* Breaking banner */}
-            {a.is_breaking && (
-              <div style={{ display:'inline-flex', alignItems:'center', gap:4, background:C.breaking, borderRadius:3, padding:'2px 8px', marginBottom:6 }}>
-                <div style={{ width:6, height:6, borderRadius:3, background:'#fff', animation:'pulse 1.5s infinite' }}/>
-                <span style={{ color:'#fff', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>Urgente</span>
-              </div>
-            )}
-
-            <div style={{ color:C.text, fontSize:16, fontWeight:600, lineHeight:1.35, marginBottom:6 }}>{a.title}</div>
-
-            {a.body && (
-              <div style={{ color:C.textSec, fontSize:13, lineHeight:1.4, marginBottom:8,
-                overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical',
-              }}>{a.body}</div>
-            )}
-
-            <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-              <span style={{ color:C.accent, fontSize:12, fontWeight:600 }}>{a.author_name || 'Redação'}</span>
-              <span style={{ color:C.textTer, fontSize:12 }}>•</span>
-              <span style={{ color:C.textSec, fontSize:12 }}>{timeAgo(a.created_at)}</span>
-              {a.category && (
-                <>
-                  <span style={{ color:C.textTer, fontSize:12 }}>•</span>
-                  <span style={{ background:C.tag, color:C.textSec, fontSize:10, padding:'1px 6px', borderRadius:3 }}>{a.category}</span>
-                </>
-              )}
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: "#888", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase" }}>Categoria</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {["Geral", "Politica", "Seguranca", "Cultura", "Esportes"].map((cat) => (
+                <button key={cat} onClick={() => setPublishCategory(cat)} style={{
+                  padding: "6px 12px", borderRadius: 16,
+                  background: publishCategory === cat ? "#D32F2F" : "#1a1a1a",
+                  border: `1px solid ${publishCategory === cat ? "#D32F2F" : "#333"}`,
+                  color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+                }}>
+                  {cat}
+                </button>
+              ))}
             </div>
           </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <div style={{ color: "#888", fontSize: 12, fontWeight: 600, marginBottom: 6, textTransform: "uppercase" }}>Conteudo</div>
+            <textarea
+              value={publishContent}
+              onChange={(e) => setPublishContent(e.target.value)}
+              placeholder="Escreva sua noticia aqui..."
+              rows={10}
+              style={{
+                width: "100%", padding: "12px", borderRadius: 8,
+                background: "#1a1a1a", border: "1px solid #333",
+                color: "#fff", fontSize: 14, lineHeight: 1.6, outline: "none",
+                resize: "none", boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div style={{
+            padding: 12, borderRadius: 8, background: "#1a1a1a",
+            border: "1px dashed #333", textAlign: "center",
+          }}>
+            <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="1.5" style={{ margin: "0 auto 4px", display: "block" }}>
+              <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="#666"/><polyline points="21 15 16 10 5 21"/>
+            </svg>
+            <div style={{ color: "#666", fontSize: 12 }}>Adicionar foto (opcional)</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // ARTICLE VIEW
+  // ============================================================
+  if (view === "article") {
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#0f0f0f", display: "flex", flexDirection: "column" }}>
+        <div style={{
+          display: "flex", alignItems: "center", padding: "12px 16px",
+          borderBottom: "1px solid #222",
+        }}>
+          <button onClick={() => setView("feed")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span style={{ color: "#D32F2F", fontSize: 14, fontWeight: 800, marginLeft: 12 }}>WEAZEL NEWS</span>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {/* Hero image */}
+          <div style={{
+            height: 180, background: selectedArticle.gradient,
+            display: "flex", alignItems: "flex-end", padding: 16,
+          }}>
+            <span style={{
+              padding: "4px 10px", borderRadius: 4,
+              background: "#D32F2F", color: "#fff",
+              fontSize: 11, fontWeight: 700,
+            }}>
+              {selectedArticle.category}
+            </span>
+          </div>
+
+          <div style={{ padding: 16 }}>
+            <h1 style={{
+              color: "#fff", fontSize: 22, fontWeight: 800,
+              lineHeight: 1.3, marginBottom: 12, margin: 0,
+            }}>
+              {selectedArticle.title}
+            </h1>
+
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8, marginBottom: 20,
+            }}>
+              <div style={{
+                width: 32, height: 32, borderRadius: "50%",
+                background: "#D32F2F",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 700, color: "#fff",
+              }}>
+                {selectedArticle.author.charAt(0)}
+              </div>
+              <div>
+                <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{selectedArticle.author}</div>
+                <div style={{ color: "#888", fontSize: 11 }}>{selectedArticle.time}</div>
+              </div>
+            </div>
+
+            <p style={{
+              color: "#ccc", fontSize: 15, lineHeight: 1.7, margin: 0, marginBottom: 20,
+            }}>
+              {selectedArticle.content}
+            </p>
+
+            {/* Actions */}
+            <div style={{
+              display: "flex", gap: 16, padding: "16px 0",
+              borderTop: "1px solid #222",
+            }}>
+              <button style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", cursor: "pointer",
+              }}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+                  <path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/>
+                </svg>
+                <span style={{ color: "#888", fontSize: 13 }}>{selectedArticle.comments}</span>
+              </button>
+              <button style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", cursor: "pointer",
+              }}>
+                <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2">
+                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>
+                </svg>
+                <span style={{ color: "#888", fontSize: 13 }}>Compartilhar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // FEED VIEW (default)
+  // ============================================================
+  return (
+    <div style={{ width: "100%", height: "100%", background: "#0f0f0f", display: "flex", flexDirection: "column" }}>
+      {/* Header */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 16px", borderBottom: "1px solid #222", flexShrink: 0,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 6, background: "#D32F2F",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="#fff">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <span style={{ color: "#fff", fontSize: 16, fontWeight: 800 }}>WEAZEL</span>
+          <span style={{ color: "#D32F2F", fontSize: 16, fontWeight: 800 }}>NEWS</span>
+        </div>
+        <button onClick={() => setView("publish")} style={{
+          background: "#D32F2F", border: "none", borderRadius: 6,
+          padding: "6px 12px", cursor: "pointer",
+          display: "flex", alignItems: "center", gap: 4,
+        }}>
+          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>Publicar</span>
+        </button>
+      </div>
+
+      {/* Breaking news */}
+      <div style={{
+        margin: "8px 16px", padding: "10px 12px", borderRadius: 8,
+        background: "linear-gradient(90deg, #D32F2F, #B71C1C)",
+        display: "flex", alignItems: "center", gap: 8, flexShrink: 0,
+      }}>
+        <span style={{
+          padding: "2px 6px", borderRadius: 3, background: "#fff",
+          color: "#D32F2F", fontSize: 10, fontWeight: 800,
+          flexShrink: 0,
+        }}>
+          AO VIVO
+        </span>
+        <span style={{ color: "#fff", fontSize: 12, fontWeight: 600, lineHeight: 1.3 }}>
+          {BREAKING.title}
+        </span>
+      </div>
+
+      {/* Categories */}
+      <div style={{
+        display: "flex", gap: 6, padding: "8px 16px",
+        overflowX: "auto", flexShrink: 0,
+      }}>
+        {categories.map((cat) => (
+          <button key={cat} onClick={() => setFilter(cat)} style={{
+            padding: "6px 14px", borderRadius: 16, flexShrink: 0,
+            background: filter === cat ? "#D32F2F" : "#1a1a1a",
+            border: filter === cat ? "none" : "1px solid #333",
+            color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer",
+          }}>
+            {cat}
+          </button>
         ))}
       </div>
 
-      <style>{`
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-      `}</style>
+      {/* Articles */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "4px 16px" }}>
+        {/* Featured first article */}
+        {filter === "Todos" && (
+          <button
+            onClick={() => { setSelectedArticle(articles[0]); setView("article"); }}
+            style={{
+              width: "100%", borderRadius: 12, overflow: "hidden",
+              marginBottom: 12, border: "none", cursor: "pointer",
+              display: "block", textAlign: "left",
+            }}
+          >
+            <div style={{
+              height: 140, background: articles[0].gradient,
+              display: "flex", alignItems: "flex-end", padding: 12,
+            }}>
+              <div>
+                <span style={{
+                  padding: "2px 8px", borderRadius: 3, background: "#D32F2F",
+                  color: "#fff", fontSize: 10, fontWeight: 700,
+                }}>
+                  {articles[0].category}
+                </span>
+                <div style={{ color: "#fff", fontSize: 16, fontWeight: 700, marginTop: 8, lineHeight: 1.3 }}>
+                  {articles[0].title}
+                </div>
+              </div>
+            </div>
+          </button>
+        )}
+
+        {/* List articles */}
+        {(filter === "Todos" ? filteredArticles.slice(1) : filteredArticles).map((article) => (
+          <button
+            key={article.id}
+            onClick={() => { setSelectedArticle(article); setView("article"); }}
+            style={{
+              width: "100%", display: "flex", gap: 12,
+              padding: "12px 0", borderBottom: "1px solid #1a1a1a",
+              background: "none", border: "none", borderBlockEnd: "1px solid #1a1a1a",
+              cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div style={{ flex: 1 }}>
+              <span style={{
+                color: "#D32F2F", fontSize: 10, fontWeight: 700,
+                textTransform: "uppercase",
+              }}>
+                {article.category}
+              </span>
+              <div style={{ color: "#fff", fontSize: 14, fontWeight: 600, lineHeight: 1.3, marginTop: 4, marginBottom: 4 }}>
+                {article.title}
+              </div>
+              <div style={{ color: "#888", fontSize: 11 }}>
+                {article.author} - {article.time}
+              </div>
+            </div>
+            <div style={{
+              width: 72, height: 72, borderRadius: 8,
+              background: article.gradient, flexShrink: 0,
+            }} />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
