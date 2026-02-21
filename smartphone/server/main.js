@@ -196,7 +196,7 @@ async function ensureProfile(source) {
 
     if (!profile) {
         await dbQuery(
-            'INSERT INTO smartphone_profiles (user_id, phone_number) VALUES (?, ?)',
+            'INSERT IGNORE  INTO smartphone_profiles (user_id, phone_number) VALUES (?, ?)',
             [userId, phone]
         );
         profile = { user_id: userId, phone_number: phone, avatar: 'user.jpg', wallpaper: 'default', settings: '{}' };

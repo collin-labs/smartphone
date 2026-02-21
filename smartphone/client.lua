@@ -277,11 +277,11 @@ RegisterNUICallback('client:action', function(data, cb)
         end
         cb({ ok = true })
 
-    elseif action == 'takeScreenshot' then
+   elseif action == 'takeScreenshot' then
         -- ============================================
-        -- FASE 4: Câmera real (screenshot-basic + FiveManage)
+        -- FASE 4: Upload DIRETO client → FiveManage
         -- ============================================
-        cb({ ok = true }) -- Responde imediato pro NUI
+        cb({ ok = true })
 
         if GetResourceState('screenshot-basic') ~= 'started' then
             SendNUIMessage({ type = 'screenshot:result', url = '' })
@@ -289,25 +289,43 @@ RegisterNUICallback('client:action', function(data, cb)
             return
         end
 
-        -- 1. Esconde o celular (pra não aparecer na foto)
+        -- 1. Esconde o celular
         SendNUIMessage({ type = 'screenshot:hide' })
         Wait(250)
 
-        -- 2. Captura a tela como base64
-        exports['screenshot-basic']:requestScreenshot({encoding = 'jpg', quality = 0.85}, function(dataUri)
-            -- 3. Mostra o celular de volta
-            SendNUIMessage({ type = 'screenshot:show' })
+        -- 2. Upload direto pro FiveManage COM header Authorization
+        exports['screenshot-basic']:requestScreenshotUpload(
+            'https://api.fivemanage.com/api/image',
+            'file',
+            {
+                headers = {
+                    ['Authorization'] = '91paQFOdc19UzEnmJzJW8IVYg5WD5Knm'
+                },
+                encoding = 'jpg',
+                quality = 0.85
+            },
+            function(data)
+                -- 3. Mostra o celular
+                SendNUIMessage({ type = 'screenshot:show' })
 
-            if not dataUri or dataUri == '' then
-                SendNUIMessage({ type = 'screenshot:result', url = '' })
-                print('[SMARTPHONE] Screenshot falhou!')
-                return
+                local url = ''
+                if data then
+                    local ok, resp = pcall(json.decode, data)
+                    if ok and resp and resp.url then
+                        url = resp.url
+                    end
+                end
+
+                if url ~= '' then
+                    print('[SMARTPHONE] 📸 Foto: ' .. url)
+                    TriggerServerEvent('smartphone:backend:req', -999, 'gallery_capture', { url = url, caption = 'Screenshot' })
+                else
+                    print('[SMARTPHONE] Upload falhou: ' .. tostring(data))
+                end
+
+                SendNUIMessage({ type = 'screenshot:result', url = url })
             end
-
-            -- 4. Envia pro server fazer upload (FiveManage/Fivemerr)
-            TriggerServerEvent('smartphone:screenshot:upload', dataUri)
-            print('[SMARTPHONE] Screenshot capturado! Enviando pro server...')
-        end)
+        )
 
     else
         cb({ error = 'unknown_action' })

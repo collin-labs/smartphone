@@ -1,662 +1,287 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchBackend, fetchClient } from '../hooks/useNui';
-import { usePusherEvent } from '../hooks/usePusher';
-import { getIncomingCall, clearIncomingCall } from '../store/callState';
+import React, { useState, useCallback, useEffect } from "react";
+import { fetchBackend, fetchClient } from "../hooks/useNui";
 
-// ============================================
-// CORES iOS
-// ============================================
+// ============================================================
+// Phone App — Visual V0 pixel-perfect + Backend FiveM
+// Telas: keypad | calling
+// V0 layout: 100% preservado | Backend: fetchBackend integrado
+// ============================================================
 
-const C = {
-  green: '#30D158',
-  red: '#FF3B30',
-  blue: '#007AFF',
-  bg: '#000000',
-  card: '#1C1C1E',
-  card2: '#2C2C2E',
-  textPrimary: '#FFFFFF',
-  textSecondary: '#8E8E93',
-  separator: '#38383A',
+// ---------- Dados fallback (100% V0) ----------
+const FALLBACK_FAVORITES = [
+  { id: 1, name: "Mae", number: "(11) 98765-4321", color: "#FF6B6B" },
+  { id: 2, name: "Pai", number: "(11) 98765-1234", color: "#4ECDC4" },
+  { id: 3, name: "Maria", number: "(21) 99887-6655", color: "#E1306C" },
+  { id: 4, name: "Joao", number: "(11) 91234-5678", color: "#F77737" },
+];
+const FALLBACK_RECENTS = [
+  { id: 1, name: "Maria LS", number: "(21) 99887-6655", time: "14:30", type: "incoming", color: "#E1306C" },
+  { id: 2, name: "Desconhecido", number: "(11) 3456-7890", time: "13:15", type: "missed", color: "#666" },
+  { id: 3, name: "Joao Grau", number: "(11) 91234-5678", time: "12:00", type: "outgoing", color: "#F77737" },
+  { id: 4, name: "Pizzaria LS", number: "(11) 3333-4444", time: "Ontem", type: "outgoing", color: "#CC0000" },
+  { id: 5, name: "Desconhecido", number: "(11) 9876-5432", time: "Ontem", type: "missed", color: "#666" },
+  { id: 6, name: "Ana Belle", number: "(21) 98765-0000", time: "Ontem", type: "incoming", color: "#C13584" },
+  { id: 7, name: "Pedro MG", number: "(31) 99999-8888", time: "25/01", type: "outgoing", color: "#405DE6" },
+  { id: 8, name: "Lari Santos", number: "(11) 97777-6666", time: "24/01", type: "incoming", color: "#833AB4" },
+];
+
+const timeAgo = (d) => {
+  if (!d) return "";
+  const now = new Date();
+  const dt = new Date(d);
+  const diff = Math.floor((now - dt) / 86400000);
+  if (diff === 0) return dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  if (diff === 1) return "Ontem";
+  return dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 };
 
-// ============================================
-// COMPONENTE PRINCIPAL
-// ============================================
-
 export default function Phone({ onNavigate }) {
-  const [tab, setTab] = useState('keypad'); // keypad | recents
-  const [dialNumber, setDialNumber] = useState('');
-  const [callHistory, setCallHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  // Call state
-  const [activeCall, setActiveCall] = useState(null); // { callId, phone, name, direction, status, startTime }
-  const [incomingCall, setIncomingCall] = useState(null); // { callId, callerPhone, callerName }
-  const [callDuration, setCallDuration] = useState(0);
+  const [view, setView] = useState("keypad");
+  const [tab, setTab] = useState("teclado");
+  const [dialNumber, setDialNumber] = useState("");
+  const [callingName, setCallingName] = useState("");
+  const [callTime, setCallTime] = useState(0);
+  const [callActive, setCallActive] = useState(false);
+  const [recents, setRecents] = useState(FALLBACK_RECENTS);
+  const [favorites, setFavorites] = useState(FALLBACK_FAVORITES);
   const [muted, setMuted] = useState(false);
   const [speaker, setSpeaker] = useState(false);
-  const [callError, setCallError] = useState(null);
-  const timerRef = useRef(null);
+  const [activeCallId, setActiveCallId] = useState(null);
 
-  // ============================================
-  // Carregar histórico
-  // ============================================
-
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-    const res = await fetchBackend('call_history');
-    if (res?.calls) setCallHistory(res.calls);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory]);
-
-  // Check global store for pending incoming call (set by PhoneShell before mount)
-  useEffect(() => {
-    const pending = getIncomingCall();
-    if (pending) {
-      setIncomingCall({
-        callId: pending.callId,
-        callerPhone: pending.callerPhone,
-        callerName: pending.callerName,
-      });
-      clearIncomingCall();
-    }
-  }, []);
-
-  // ============================================
-  // Call timer
-  // ============================================
-
-  useEffect(() => {
-    if (activeCall?.status === 'connected') {
-      timerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [activeCall?.status]);
-
-  // ============================================
-  // PUSHER: Eventos de chamada em tempo real
-  // ============================================
-
-  usePusherEvent('CALL_INCOMING', useCallback((data) => {
-    setIncomingCall({
-      callId: data.callId,
-      callerPhone: data.callerPhone,
-      callerName: data.callerName,
-    });
-    fetchClient('playSound', { sound: 'ring' });
-  }, []));
-
-  usePusherEvent('CALL_ACCEPTED', useCallback((data) => {
-    setIncomingCall(null);
-    setActiveCall(prev => prev ? { ...prev, status: 'connected' } : {
-      callId: data.callId,
-      phone: data.callerPhone || data.receiverPhone,
-      name: null,
-      direction: 'incoming',
-      status: 'connected',
-    });
-    setCallDuration(0);
-  }, []));
-
-  usePusherEvent('CALL_REJECTED', useCallback((data) => {
-    fetchClient('playSound', { sound: 'hangup' });
-    fetchClient('stopCallAnim');
-    setActiveCall(null);
-    setCallDuration(0);
-  }, []));
-
-  usePusherEvent('CALL_ENDED', useCallback((data) => {
-    fetchClient('playSound', { sound: 'hangup' });
-    fetchClient('stopCallAnim');
-    setActiveCall(null);
-    setIncomingCall(null);
-    setCallDuration(0);
-    if (timerRef.current) clearInterval(timerRef.current);
-    loadHistory();
-  }, [loadHistory]));
-
-  usePusherEvent('CALL_CANCELLED', useCallback(() => {
-    fetchClient('stopCallAnim');
-    setIncomingCall(null);
-  }, []));
-
-  // ============================================
-  // Actions
-  // ============================================
-
-  const handleDial = async (number) => {
-    const target = number || dialNumber;
-    if (!target || target.length < 3) return;
-
-    const res = await fetchBackend('call_init', { phone: target });
-
-    if (res?.error) {
-      setCallError(res.error);
-      setTimeout(() => setCallError(null), 3000);
-      return;
-    }
-
-    fetchClient('playSound', { sound: 'dial' });
-    fetchClient('startCallAnim');
-
-    setActiveCall({
-      callId: res.callId,
-      phone: target,
-      name: null,
-      direction: 'outgoing',
-      status: 'ringing',
-    });
-    setCallDuration(0);
-    setDialNumber('');
-  };
-
-  const handleAccept = async () => {
-    if (!incomingCall) return;
-    await fetchBackend('call_accept', { callId: incomingCall.callId });
-
-    fetchClient('startCallAnim');
-
-    setActiveCall({
-      callId: incomingCall.callId,
-      phone: incomingCall.callerPhone,
-      name: incomingCall.callerName,
-      direction: 'incoming',
-      status: 'connected',
-    });
-    setIncomingCall(null);
-    setCallDuration(0);
-  };
-
-  const handleReject = async () => {
-    if (!incomingCall) return;
-    await fetchBackend('call_reject', { callId: incomingCall.callId });
-    fetchClient('playSound', { sound: 'hangup' });
-    setIncomingCall(null);
-  };
-
-  const handleEnd = async () => {
-    if (!activeCall) return;
-    await fetchBackend('call_end', { callId: activeCall.callId });
-    fetchClient('playSound', { sound: 'hangup' });
-    fetchClient('stopCallAnim');
-    setActiveCall(null);
-    setCallDuration(0);
-    if (timerRef.current) clearInterval(timerRef.current);
-    loadHistory();
-  };
-
-  const handleCancel = async () => {
-    if (!activeCall) return;
-    await fetchBackend('call_cancel', { callId: activeCall.callId });
-    fetchClient('playSound', { sound: 'hangup' });
-    fetchClient('stopCallAnim');
-    setActiveCall(null);
-    setCallDuration(0);
-  };
-
-  const addDigit = (digit) => {
-    if (dialNumber.length < 15) setDialNumber(prev => prev + digit);
-  };
-
-  const removeDigit = () => {
-    setDialNumber(prev => prev.slice(0, -1));
-  };
-
-  const formatDuration = (s) => {
-    const m = Math.floor(s / 60);
-    const sec = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  };
-
-  const formatTime = (dateStr) => {
-    if (!dateStr) return '';
-    const d = new Date(dateStr);
-    const now = new Date();
-    const isToday = d.toDateString() === now.toDateString();
-    if (isToday) {
-      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    }
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  };
-
-  // ============================================
-  // INCOMING CALL OVERLAY
-  // ============================================
-
-  if (incomingCall) {
-    return (
-      <div style={{
-        height: '100%', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'space-between',
-        background: 'linear-gradient(180deg, #1C1C1E 0%, #000 100%)',
-        padding: '60px 20px 40px',
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ color: C.textSecondary, fontSize: 15, marginBottom: 8 }}>chamada recebida</div>
-          <div style={{ color: C.textPrimary, fontSize: 30, fontWeight: 300, marginBottom: 4 }}>
-            {incomingCall.callerName || incomingCall.callerPhone}
-          </div>
-          {incomingCall.callerName && (
-            <div style={{ color: C.textSecondary, fontSize: 16 }}>{incomingCall.callerPhone}</div>
-          )}
-        </div>
-
-        {/* Avatar */}
-        <div style={{
-          width: 100, height: 100, borderRadius: 50, background: '#636366',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontSize: 44, color: '#AEAEB2', fontWeight: 300 }}>
-            {(incomingCall.callerName || incomingCall.callerPhone)[0]?.toUpperCase()}
-          </span>
-        </div>
-
-        {/* Accept / Reject buttons */}
-        <div style={{ display: 'flex', gap: 60 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <button onClick={handleReject} style={{
-              width: 64, height: 64, borderRadius: 32, background: C.red,
-              border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <PhoneIcon rotated />
-            </button>
-            <span style={{ color: C.red, fontSize: 13 }}>Recusar</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-            <button onClick={handleAccept} style={{
-              width: 64, height: 64, borderRadius: 32, background: C.green,
-              border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              <PhoneIcon />
-            </button>
-            <span style={{ color: C.green, fontSize: 13 }}>Aceitar</span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================
-  // ACTIVE CALL SCREEN
-  // ============================================
-
-  if (activeCall) {
-    const isRinging = activeCall.status === 'ringing';
-    const isConnected = activeCall.status === 'connected';
-
-    return (
-      <div style={{
-        height: '100%', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'space-between',
-        background: 'linear-gradient(180deg, #1a1a1e 0%, #000 100%)',
-        padding: '60px 20px 40px',
-      }}>
-        {/* Top info */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ color: C.textPrimary, fontSize: 30, fontWeight: 300, marginBottom: 4 }}>
-            {activeCall.name || activeCall.phone}
-          </div>
-          <div style={{ color: C.textSecondary, fontSize: 16 }}>
-            {isRinging ? 'chamando...' : formatDuration(callDuration)}
-          </div>
-        </div>
-
-        {/* Avatar */}
-        <div style={{
-          width: 100, height: 100, borderRadius: 50, background: '#636366',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <span style={{ fontSize: 44, color: '#AEAEB2', fontWeight: 300 }}>
-            {(activeCall.name || activeCall.phone)[0]?.toUpperCase()}
-          </span>
-        </div>
-
-        {/* Controls */}
-        <div>
-          {isConnected && (
-            <div style={{ display: 'flex', gap: 32, marginBottom: 40, justifyContent: 'center' }}>
-              <CallControl
-                icon="🔇"
-                label={muted ? 'Ativo' : 'Mudo'}
-                active={muted}
-                onClick={() => setMuted(v => !v)}
-              />
-              <CallControl
-                icon="🔊"
-                label="Alto-falante"
-                active={speaker}
-                onClick={() => setSpeaker(v => !v)}
-              />
-            </div>
-          )}
-
-          {/* End call */}
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-              <button onClick={isRinging ? handleCancel : handleEnd} style={{
-                width: 64, height: 64, borderRadius: 32, background: C.red,
-                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}>
-                <PhoneIcon rotated />
-              </button>
-              <span style={{ color: C.red, fontSize: 13 }}>
-                {isRinging ? 'Cancelar' : 'Encerrar'}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // ============================================
-  // MAIN VIEW: Tabs (Recentes / Teclado)
-  // ============================================
-
-  return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
-      {/* Error toast */}
-      {callError && (
-        <div style={{
-          position: 'absolute', top: 12, left: 16, right: 16, zIndex: 50,
-          background: 'rgba(255,59,48,0.9)', borderRadius: 12, padding: '10px 16px',
-          backdropFilter: 'blur(20px)', textAlign: 'center',
-        }}>
-          <span style={{ color: '#fff', fontSize: 14, fontWeight: 500 }}>{callError}</span>
-        </div>
-      )}
-
-      {/* Tab bar */}
-      <div style={{
-        display: 'flex', padding: '12px 16px 8px',
-        background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(20px)',
-      }}>
-        {['recents', 'keypad'].map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            style={{
-              flex: 1, padding: '8px 0', border: 'none', cursor: 'pointer',
-              background: tab === t ? C.blue : 'transparent',
-              borderRadius: 8, color: tab === t ? '#fff' : C.textSecondary,
-              fontSize: 14, fontWeight: 600, transition: 'all 150ms',
-            }}
-          >
-            {t === 'recents' ? 'Recentes' : 'Teclado'}
-          </button>
-        ))}
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        {tab === 'keypad' ? (
-          <KeypadView
-            number={dialNumber}
-            onDigit={addDigit}
-            onDelete={removeDigit}
-            onCall={() => handleDial()}
-          />
-        ) : (
-          <RecentsView
-            calls={callHistory}
-            loading={loading}
-            formatTime={formatTime}
-            onCall={handleDial}
-            onSms={(phone) => onNavigate?.('sms', { to: phone })}
-            onRefresh={loadHistory}
-          />
-        )}
-      </div>
-
-      {/* Home indicator */}
-      <div style={{ height: 20, background: C.bg }} />
-    </div>
-  );
-}
-
-// ============================================
-// KEYPAD VIEW
-// ============================================
-
-function KeypadView({ number, onDigit, onDelete, onCall }) {
-  const keys = [
-    ['1', '2', '3'],
-    ['4', '5', '6'],
-    ['7', '8', '9'],
-    ['*', '0', '#'],
+  const dialPad = [
+    { num: "1", sub: "" }, { num: "2", sub: "ABC" }, { num: "3", sub: "DEF" },
+    { num: "4", sub: "GHI" }, { num: "5", sub: "JKL" }, { num: "6", sub: "MNO" },
+    { num: "7", sub: "PQRS" }, { num: "8", sub: "TUV" }, { num: "9", sub: "WXYZ" },
+    { num: "*", sub: "" }, { num: "0", sub: "+" }, { num: "#", sub: "" },
   ];
 
-  const subLabels = {
-    '2': 'ABC', '3': 'DEF', '4': 'GHI', '5': 'JKL',
-    '6': 'MNO', '7': 'PQRS', '8': 'TUV', '9': 'WXYZ',
-    '0': '+',
+  // ---------- Backend: carregar histórico ----------
+  useEffect(() => {
+    (async () => {
+      const res = await fetchBackend("call_history");
+      if (res?.calls?.length) {
+        setRecents(res.calls.map((c, i) => ({
+          id: c.id || i + 1,
+          name: c.contact_name || c.phone || "Desconhecido",
+          number: c.phone || "",
+          time: c.created_at ? timeAgo(c.created_at) : "",
+          type: c.direction || "outgoing",
+          color: ["#E1306C", "#F77737", "#C13584", "#405DE6", "#833AB4", "#CC0000"][i % 6],
+        })));
+      }
+    })();
+  }, []);
+
+  const pressKey = useCallback((num) => {
+    setDialNumber((prev) => prev + num);
+  }, []);
+
+  const makeCall = useCallback(async () => {
+    if (!dialNumber && !callingName) return;
+    const contact = recents.find((r) => r.number.replace(/\D/g, "").includes(dialNumber.replace(/\D/g, "")));
+    const name = callingName || contact?.name || dialNumber || "Desconhecido";
+    setCallingName(name);
+    setView("calling");
+    setCallActive(false);
+    setCallTime(0);
+    setMuted(false);
+    setSpeaker(false);
+
+    // Backend: iniciar chamada
+    const res = await fetchBackend("call_init", { phone: dialNumber || contact?.number });
+    if (res?.callId) setActiveCallId(res.callId);
+    setTimeout(() => setCallActive(true), 2000);
+  }, [dialNumber, callingName, recents]);
+
+  const callFromContact = useCallback(async (name, number) => {
+    setDialNumber(number);
+    setCallingName(name);
+    setView("calling");
+    setCallActive(false);
+    setCallTime(0);
+    setMuted(false);
+    setSpeaker(false);
+
+    const res = await fetchBackend("call_init", { phone: number });
+    if (res?.callId) setActiveCallId(res.callId);
+    setTimeout(() => setCallActive(true), 2000);
+  }, []);
+
+  const endCall = useCallback(async () => {
+    if (activeCallId) await fetchBackend("call_end", { callId: activeCallId });
+    setView("keypad");
+    setCallTime(0);
+    setCallActive(false);
+    setActiveCallId(null);
+    setCallingName("");
+  }, [activeCallId]);
+
+  // Timer for call
+  useEffect(() => {
+    if (!callActive || view !== "calling") return;
+    const iv = setInterval(() => setCallTime((t) => t + 1), 1000);
+    return () => clearInterval(iv);
+  }, [callActive, view]);
+
+  const formatTime = (s) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
   };
 
-  return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '20px 32px 0', height: '100%', justifyContent: 'space-between',
-    }}>
-      {/* Display */}
-      <div style={{
-        height: 50, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: '100%', marginBottom: 8,
-      }}>
-        <span style={{
-          color: C.textPrimary, fontSize: number.length > 10 ? 28 : 34,
-          fontWeight: 300, letterSpacing: 2, textAlign: 'center',
-        }}>
-          {number || '\u00A0'}
-        </span>
+  // ============================================================
+  // CALLING VIEW (100% V0)
+  // ============================================================
+  if (view === "calling") {
+    return (
+      <div style={{ width: "100%", height: "100%", background: "linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ marginTop: 60, textAlign: "center" }}>
+          <div style={{ width: 80, height: 80, borderRadius: "50%", background: "linear-gradient(135deg, #4CAF50, #2E7D32)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+            <span style={{ color: "#fff", fontSize: 32, fontWeight: 700 }}>{callingName.charAt(0).toUpperCase()}</span>
+          </div>
+          <div style={{ color: "#fff", fontSize: 24, fontWeight: 700 }}>{callingName}</div>
+          <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 14, marginTop: 6 }}>{callActive ? formatTime(callTime) : "Chamando..."}</div>
+        </div>
+        <div style={{ flex: 1 }} />
+        {/* Call actions (100% V0) */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, padding: "0 40px", marginBottom: 30 }}>
+          {[
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={muted ? "#FF3B30" : "#fff"} strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/></svg>, label: "Mudo", action: () => setMuted(!muted) },
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="3" x2="9" y2="21"/></svg>, label: "Teclado" },
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={speaker ? "#4CAF50" : "#fff"} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>, label: "Alto-falante", action: () => setSpeaker(!speaker) },
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>, label: "Adicionar" },
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>, label: "Pausar" },
+            { icon: <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>, label: "Contatos" },
+          ].map((action, i) => (
+            <div key={i} onClick={action.action} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>{action.icon}</div>
+              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 10 }}>{action.label}</span>
+            </div>
+          ))}
+        </div>
+        {/* End call (100% V0) */}
+        <button onClick={endCall} style={{ width: 64, height: 64, borderRadius: "50%", background: "#FF3B30", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 40 }}>
+          <svg width={28} height={28} viewBox="0 0 24 24" fill="#fff"><path d="M23.71 16.67C20.66 13.78 16.54 12 12 12S3.34 13.78.29 16.67a1 1 0 00-.04 1.4l2.56 2.56a1 1 0 001.12.22 12.6 12.6 0 014.46-1.45 1 1 0 00.86-.99V15a10.45 10.45 0 015.5 0v3.41a1 1 0 00.86.99 12.6 12.6 0 014.46 1.45 1 1 0 001.12-.22l2.56-2.56a1 1 0 00-.04-1.4z"/></svg>
+        </button>
       </div>
+    );
+  }
 
-      {/* Keys */}
-      <div style={{ width: '100%' }}>
-        {keys.map((row, ri) => (
-          <div key={ri} style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-            {row.map(key => (
-              <button
-                key={key}
-                onClick={() => onDigit(key)}
-                style={{
-                  width: 75, height: 75, borderRadius: 38,
-                  background: C.card2, border: 'none', cursor: 'pointer',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  transition: 'background 100ms',
-                }}
-                onMouseDown={e => e.currentTarget.style.background = '#4A4A4E'}
-                onMouseUp={e => e.currentTarget.style.background = C.card2}
-                onMouseLeave={e => e.currentTarget.style.background = C.card2}
-              >
-                <span style={{ color: C.textPrimary, fontSize: 32, fontWeight: 300, lineHeight: 1 }}>
-                  {key}
-                </span>
-                {subLabels[key] && (
-                  <span style={{ color: C.textPrimary, fontSize: 10, fontWeight: 600, letterSpacing: 1.5, marginTop: 2 }}>
-                    {subLabels[key]}
-                  </span>
-                )}
+  // ============================================================
+  // KEYPAD VIEW (default — 100% V0)
+  // ============================================================
+  return (
+    <div style={{ width: "100%", height: "100%", background: "#000", display: "flex", flexDirection: "column" }}>
+      {/* Content area */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {tab === "teclado" && (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 24 }}>
+            {/* Display */}
+            <div style={{ fontSize: dialNumber.length > 12 ? 24 : 32, fontWeight: 300, color: "#fff", minHeight: 44, display: "flex", alignItems: "center", letterSpacing: 2, padding: "0 16px", marginBottom: 16, fontFamily: "monospace" }}>
+              {dialNumber || <span style={{ color: "#666" }}>Digite o numero</span>}
+            </div>
+            {/* Numpad (100% V0) */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, padding: "0 32px", width: "100%", boxSizing: "border-box" }}>
+              {dialPad.map((key) => (
+                <button key={key.num} onClick={() => pressKey(key.num)} style={{ height: 56, borderRadius: "50%", background: "rgba(255,255,255,0.08)", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 26, fontWeight: 300, lineHeight: 1 }}>{key.num}</span>
+                  {key.sub && <span style={{ color: "#888", fontSize: 9, fontWeight: 600, letterSpacing: 2, marginTop: 1 }}>{key.sub}</span>}
+                </button>
+              ))}
+            </div>
+            {/* Call + delete row (100% V0) */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 32, marginTop: 16, width: "100%", padding: "0 32px", boxSizing: "border-box" }}>
+              <div style={{ width: 56 }} />
+              <button onClick={makeCall} style={{ width: 64, height: 64, borderRadius: "50%", background: "#4CAF50", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <svg width={28} height={28} viewBox="0 0 24 24" fill="#fff"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
+              </button>
+              <button onClick={() => setDialNumber((prev) => prev.slice(0, -1))} style={{ width: 56, height: 56, borderRadius: "50%", background: "transparent", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", opacity: dialNumber ? 1 : 0.3 }}>
+                <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M21 4H8l-7 8 7 8h13a2 2 0 002-2V6a2 2 0 00-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "favoritos" && (
+          <div style={{ padding: "8px 0" }}>
+            {favorites.map((fav) => (
+              <button key={fav.id} onClick={() => callFromContact(fav.name, fav.number)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", borderBottom: "1px solid #1a1a1a" }}>
+                <div style={{ width: 44, height: 44, borderRadius: "50%", background: fav.color, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 18, fontWeight: 700 }}>{fav.name.charAt(0)}</span>
+                </div>
+                <div>
+                  <div style={{ color: "#fff", fontSize: 15, fontWeight: 600 }}>{fav.name}</div>
+                  <div style={{ color: "#888", fontSize: 12, marginTop: 2 }}>{fav.number}</div>
+                </div>
+                <div style={{ marginLeft: "auto" }}>
+                  <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#4CAF50" strokeWidth="2"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72"/></svg>
+                </div>
               </button>
             ))}
           </div>
-        ))}
-      </div>
+        )}
 
-      {/* Call / Delete row */}
-      <div style={{
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-        width: '100%', padding: '4px 0 12px',
-      }}>
-        <div style={{ width: 75 }} />
-        <button
-          onClick={onCall}
-          disabled={!number}
-          style={{
-            width: 75, height: 75, borderRadius: 38,
-            background: number ? C.green : '#1a3d1a',
-            border: 'none', cursor: number ? 'pointer' : 'default',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: number ? 1 : 0.5, transition: 'all 150ms',
-          }}
-        >
-          <PhoneIcon />
-        </button>
-        <div style={{ width: 75, display: 'flex', justifyContent: 'center' }}>
-          {number && (
-            <button onClick={onDelete} style={{
-              background: 'none', border: 'none', cursor: 'pointer', padding: 8,
-            }}>
-              <svg width="28" height="20" viewBox="0 0 28 20" fill="none">
-                <path d="M10 1H24a3 3 0 013 3v12a3 3 0 01-3 3H10l-9-9 9-9z" stroke="#8E8E93" strokeWidth="1.5"/>
-                <path d="M14 7l6 6M20 7l-6 6" stroke="#8E8E93" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================
-// RECENTS VIEW
-// ============================================
-
-function RecentsView({ calls, loading, formatTime, onCall, onSms, onRefresh }) {
-  if (loading) {
-    return (
-      <div style={{ color: C.textSecondary, textAlign: 'center', paddingTop: 40, fontSize: 15 }}>
-        Carregando...
-      </div>
-    );
-  }
-
-  if (calls.length === 0) {
-    return (
-      <div style={{ color: C.textSecondary, textAlign: 'center', paddingTop: 40, fontSize: 15 }}>
-        Nenhuma chamada recente
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ padding: '0 16px' }}>
-      {calls.map((call, i) => {
-        const isMissed = call.status === 'missed' || call.status === 'rejected';
-        const icon = call.direction === 'outgoing' ? '↗' : '↙';
-        const displayName = call.other_name || call.other_phone;
-
-        return (
-          <div
-            key={call.id || i}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '12px 0', borderBottom: `0.5px solid ${C.separator}`,
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
-              <span style={{
-                fontSize: 16,
-                color: call.direction === 'outgoing' ? C.green : (isMissed ? C.red : C.green),
-              }}>
-                {icon}
-              </span>
-              <div style={{ flex: 1 }}>
-                <div style={{
-                  color: isMissed ? C.red : C.textPrimary,
-                  fontSize: 16, fontWeight: isMissed ? 500 : 400,
-                }}>
-                  {displayName}
+        {tab === "recentes" && (
+          <div style={{ padding: "8px 0" }}>
+            {recents.map((recent) => (
+              <button key={recent.id} onClick={() => callFromContact(recent.name, recent.number)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", borderBottom: "1px solid #1a1a1a" }}>
+                <div style={{ width: 40, height: 40, borderRadius: "50%", background: recent.color, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 16, fontWeight: 700 }}>{recent.name.charAt(0)}</span>
                 </div>
-                <div style={{ color: C.textSecondary, fontSize: 13 }}>
-                  {call.direction === 'outgoing' ? 'Efetuada' : 'Recebida'}
-                  {call.duration > 0 && ` · ${formatDurationShort(call.duration)}`}
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: recent.type === "missed" ? "#FF3B30" : "#fff", fontSize: 14, fontWeight: 600 }}>{recent.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
+                    <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke={recent.type === "missed" ? "#FF3B30" : recent.type === "incoming" ? "#4CAF50" : "#2196F3"} strokeWidth="2">
+                      {recent.type === "incoming" && <><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/></>}
+                      {recent.type === "outgoing" && <><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></>}
+                      {recent.type === "missed" && <><line x1="18" y1="6" x2="6" y2="18"/><polyline points="6 6 6 18 18 18"/></>}
+                    </svg>
+                    <span style={{ color: "#888", fontSize: 11 }}>{recent.number}</span>
+                  </div>
                 </div>
+                <span style={{ color: "#666", fontSize: 11 }}>{recent.time}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {tab === "contatos" && (
+          <div style={{ padding: "8px 0" }}>
+            <div style={{ padding: "8px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#1a1a1a", borderRadius: 8, padding: "8px 12px" }}>
+                <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <span style={{ color: "#666", fontSize: 14 }}>Buscar contato...</span>
               </div>
             </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: C.textSecondary, fontSize: 14 }}>
-                {formatTime(call.created_at)}
-              </span>
-              <button
-                onClick={() => onSms(call.other_phone)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: 4, display: 'flex',
-                }}
-                title="Enviar SMS"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#8E8E93">
-                  <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
-                </svg>
+            {[...favorites, ...recents.map((r) => ({ id: r.id + 100, name: r.name, number: r.number, color: r.color }))].map((c) => (
+              <button key={c.id} onClick={() => callFromContact(c.name, c.number)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 16px", width: "100%", background: "none", border: "none", cursor: "pointer", textAlign: "left", borderBottom: "1px solid #1a1a1a" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: c.color, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <span style={{ color: "#fff", fontSize: 14, fontWeight: 700 }}>{c.name.charAt(0)}</span>
+                </div>
+                <div>
+                  <div style={{ color: "#fff", fontSize: 14, fontWeight: 500 }}>{c.name}</div>
+                  <div style={{ color: "#888", fontSize: 11 }}>{c.number}</div>
+                </div>
               </button>
-              <button
-                onClick={() => onCall(call.other_phone)}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  padding: 4, display: 'flex',
-                }}
-                title="Ligar"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill={C.blue}>
-                  <path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
-                </svg>
-              </button>
-            </div>
+            ))}
           </div>
-        );
-      })}
+        )}
+      </div>
+
+      {/* Bottom tabs (100% V0) */}
+      <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center", padding: "8px 0 6px", background: "#111", borderTop: "1px solid #222", flexShrink: 0 }}>
+        {[
+          { id: "favoritos", label: "Favoritos", icon: (a) => <svg width={22} height={22} viewBox="0 0 24 24" fill={a ? "#4CAF50" : "none"} stroke={a ? "#4CAF50" : "#666"} strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> },
+          { id: "recentes", label: "Recentes", icon: (a) => <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={a ? "#4CAF50" : "#666"} strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> },
+          { id: "contatos", label: "Contatos", icon: (a) => <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={a ? "#4CAF50" : "#666"} strokeWidth="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg> },
+          { id: "teclado", label: "Teclado", icon: (a) => <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={a ? "#4CAF50" : "#666"} strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg> },
+        ].map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, background: "none", border: "none", cursor: "pointer" }}>
+            {t.icon(tab === t.id)}
+            <span style={{ color: tab === t.id ? "#4CAF50" : "#666", fontSize: 10, fontWeight: 600 }}>{t.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
-  );
-}
-
-// ============================================
-// HELPERS
-// ============================================
-
-function formatDurationShort(seconds) {
-  if (!seconds || seconds < 1) return '';
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function CallControl({ icon, label, active, onClick }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <button onClick={onClick} style={{
-        width: 52, height: 52, borderRadius: 26,
-        background: active ? '#fff' : 'rgba(255,255,255,0.1)',
-        border: 'none', cursor: 'pointer', fontSize: 22,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'all 150ms',
-        filter: active ? 'none' : 'grayscale(0)',
-      }}>
-        {icon}
-      </button>
-      <span style={{ color: '#fff', fontSize: 12 }}>{label}</span>
-    </div>
-  );
-}
-
-function PhoneIcon({ rotated }) {
-  return (
-    <svg
-      width="28" height="28" viewBox="0 0 24 24" fill="white"
-      style={{ transform: rotated ? 'rotate(135deg)' : 'none' }}
-    >
-      <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56a.977.977 0 00-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
-    </svg>
   );
 }

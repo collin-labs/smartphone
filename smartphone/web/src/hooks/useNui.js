@@ -445,6 +445,122 @@ function getMockResponse(member, args) {
                 { id: 10, name: "Levanta e Anda", artist: "Emicida", youtube_id: "ZdGDsxBCnQs", duration: 212, liked: false },
             ]
         },
+        // ============================================
+        // TWITTER — Mock Data
+        // ============================================
+        tw_feed: {
+            tweets: [
+                { id: 1, profile_id: 2, username: 'maria_ls', display_name: 'Maria Santos', avatar_color: '#E1306C', content: 'Noite insana no Bahama Mamas! Quem mais tava la? A cidade nunca dorme', likes_count: 234, retweets_count: 45, replies_count: 18, views_count: 4523, is_liked: 0, is_retweeted: 0, created_at: new Date(Date.now() - 7200000).toISOString() },
+                { id: 2, profile_id: 3, username: 'joao_grau', display_name: 'Joao Grau', avatar_color: '#F77737', content: 'Carro novo blindado, quem quer dar um role pela cidade? Bora pro corre!', likes_count: 567, retweets_count: 89, replies_count: 42, views_count: 8901, is_liked: 1, is_retweeted: 0, created_at: new Date(Date.now() - 10800000).toISOString() },
+                { id: 3, profile_id: 4, username: 'weazelnews', display_name: 'WeazelNews', avatar_color: '#1DA1F2', content: 'URGENTE: Perseguicao policial na Route 68 termina com 3 detidos. Helicoptero foi acionado para a operacao.', likes_count: 1203, retweets_count: 456, replies_count: 89, views_count: 23456, is_liked: 0, is_retweeted: 1, created_at: new Date(Date.now() - 14400000).toISOString() },
+                { id: 4, profile_id: 5, username: 'ana_belle', display_name: 'Ana Belle', avatar_color: '#C13584', content: 'Golden hour em Vespucci Beach e coisa de outro mundo. Essa cidade tem seus momentos', likes_count: 891, retweets_count: 123, replies_count: 67, views_count: 12345, is_liked: 0, is_retweeted: 0, created_at: new Date(Date.now() - 18000000).toISOString() },
+                { id: 5, profile_id: 6, username: 'pedro_mg', display_name: 'Pedro MG', avatar_color: '#405DE6', content: 'Dia de leg no Iron Gym. Sem desculpas, sem dia de descanso. Bora monstrar!', likes_count: 156, retweets_count: 12, replies_count: 8, views_count: 2345, is_liked: 0, is_retweeted: 0, created_at: new Date(Date.now() - 21600000).toISOString() },
+                { id: 6, profile_id: 7, username: 'lari_santos', display_name: 'Lari Santos', avatar_color: '#833AB4', content: 'Inauguracao da loja amanha! Rolezinho por la, muita promo e brindes. Quem vem?', likes_count: 423, retweets_count: 67, replies_count: 31, views_count: 6789, is_liked: 1, is_retweeted: 1, created_at: new Date(Date.now() - 28800000).toISOString() },
+            ]
+        },
+        tw_profile: {
+            profile: { id: 1, username: 'carlos_rp', display_name: 'Carlos Silva', bio: 'Vida loka na cidade grande. Photographer | Explorer | Los Santos native', avatar_color: '#405DE6', followers_count: 1823, following_count: 312, tweets_count: 234 },
+            tweets: [
+                { id: 10, profile_id: 1, username: 'carlos_rp', display_name: 'Carlos Silva', avatar_color: '#405DE6', content: 'Foto nova do por do sol no pier. Los Santos e demais!', likes_count: 89, retweets_count: 12, replies_count: 5, views_count: 1234, is_liked: 0, is_retweeted: 0, created_at: new Date(Date.now() - 3600000).toISOString() },
+                { id: 11, profile_id: 1, username: 'carlos_rp', display_name: 'Carlos Silva', avatar_color: '#405DE6', content: 'Alguem ai pra um rolezinho de moto?', likes_count: 45, retweets_count: 3, replies_count: 12, views_count: 567, is_liked: 0, is_retweeted: 0, created_at: new Date(Date.now() - 86400000).toISOString() },
+            ]
+        },
+        tw_tweet: { ok: true, tweet: { id: Date.now(), profile_id: 1, username: 'carlos_rp', display_name: 'Carlos Silva', avatar_color: '#405DE6', content: 'Novo tweet!', likes_count: 0, retweets_count: 0, replies_count: 0, views_count: 0, is_liked: 0, is_retweeted: 0, created_at: new Date().toISOString() } },
+        tw_like: { ok: true, liked: true },
+        tw_delete: { ok: true },
+        tw_search: { tweets: [] },
+        tw_profile_update: { ok: true },
+
+        // ============================================
+        // DISCORD — Mock Data
+        // ============================================
+        discord_init: {
+            servers: [
+                { id: 1, name: 'Los Santos RP', icon: 'LS', color: '#5865F2', unread_count: 12 },
+                { id: 2, name: 'Policia LSPD', icon: 'PD', color: '#57F287', unread_count: 3 },
+                { id: 3, name: 'Mafia Italiana', icon: 'MI', color: '#ED4245', unread_count: 0 },
+                { id: 4, name: 'Mecanica Santos', icon: 'MS', color: '#FEE75C', unread_count: 5 },
+            ],
+            profile: { username: 'Carlos_RP', role_color: '#5865F2' }
+        },
+        discord_server: {
+            channels: [
+                { id: 1, name: 'geral', type: 'text', unread: true },
+                { id: 2, name: 'anuncios', type: 'text', unread: true },
+                { id: 3, name: 'off-topic', type: 'text', unread: false },
+                { id: 4, name: 'memes', type: 'text', unread: true },
+                { id: 5, name: 'rp-geral', type: 'text', unread: false },
+            ],
+            members: [
+                { id: 1, username: 'Carlos_RP', status: 'online', role: 'Admin', role_color: '#ED4245', activity: 'Jogando GTA V' },
+                { id: 2, username: 'Maria_Santos', status: 'online', role: 'Mod', role_color: '#57F287', activity: 'Ouvindo Spotify' },
+                { id: 3, username: 'Joao_Grau', status: 'online', role: 'Membro', role_color: '#fff', activity: '' },
+                { id: 4, username: 'Ana_Belle', status: 'idle', role: 'Membro', role_color: '#fff', activity: '' },
+                { id: 5, username: 'Pedro_Silva', status: 'online', role: 'Membro', role_color: '#fff', activity: 'Jogando GTA V' },
+            ]
+        },
+        discord_messages: {
+            messages: [
+                { id: 1, username: 'Carlos_RP', role_color: '#5865F2', message: 'Bora fazer aquele evento hoje a noite?', created_at: new Date(Date.now() - 3600000).toISOString() },
+                { id: 2, username: 'Maria_Santos', role_color: '#EB459E', message: 'To dentro! Que horas?', created_at: new Date(Date.now() - 3540000).toISOString() },
+                { id: 3, username: 'Joao_Grau', role_color: '#57F287', message: 'Pode ser as 21h, vou trazer o pessoal da mecanica', created_at: new Date(Date.now() - 3420000).toISOString() },
+                { id: 4, username: 'Ana_Belle', role_color: '#FEE75C', message: 'Alguem sabe se o servidor vai ter update essa semana?', created_at: new Date(Date.now() - 3240000).toISOString() },
+                { id: 5, username: 'Pedro_Silva', role_color: '#ED4245', message: 'Vi no Twitter que vao adicionar umas 5 motos novas', created_at: new Date(Date.now() - 3120000).toISOString() },
+            ]
+        },
+        discord_send: { ok: true, message: { id: Date.now(), username: 'Carlos_RP', role_color: '#5865F2', message: 'Nova mensagem', created_at: new Date().toISOString() } },
+        discord_create_server: { ok: true, server: { id: Date.now(), name: 'Novo Servidor', icon: 'N', color: '#5865F2' } },
+        discord_join: { ok: true, server: { id: Date.now(), name: 'Servidor', icon: 'S', color: '#57F287' } },
+        discord_leave: { ok: true },
+        discord_invite: { ok: true, code: 'ABC123' },
+        discord_set_role: { ok: true },
+
+        // ============================================
+        // PHONE/CALL — Mock Data
+        // ============================================
+        call_init: { ok: true, callId: Date.now() },
+        call_accept: { ok: true },
+        call_reject: { ok: true },
+        call_end: { ok: true },
+        call_cancel: { ok: true },
+        call_history: {
+            calls: [
+                { id: 1, phone: '(21) 99887-6655', contact_name: 'Maria LS', direction: 'incoming', duration: 120, created_at: new Date(Date.now() - 3600000).toISOString() },
+                { id: 2, phone: '(11) 3456-7890', contact_name: 'Desconhecido', direction: 'missed', duration: 0, created_at: new Date(Date.now() - 7200000).toISOString() },
+                { id: 3, phone: '(11) 91234-5678', contact_name: 'Joao Grau', direction: 'outgoing', duration: 340, created_at: new Date(Date.now() - 10800000).toISOString() },
+                { id: 4, phone: '(11) 3333-4444', contact_name: 'Pizzaria LS', direction: 'outgoing', duration: 45, created_at: new Date(Date.now() - 86400000).toISOString() },
+                { id: 5, phone: '(11) 9876-5432', contact_name: 'Desconhecido', direction: 'missed', duration: 0, created_at: new Date(Date.now() - 90000000).toISOString() },
+                { id: 6, phone: '(21) 98765-0000', contact_name: 'Ana Belle', direction: 'incoming', duration: 567, created_at: new Date(Date.now() - 100000000).toISOString() },
+            ]
+        },
+
+        // ============================================
+        // SMS — Mock Data
+        // ============================================
+        sms_conversations: {
+            conversations: [
+                { id: 1, phone: '(21) 99887-6655', contact_name: 'Maria LS', last_message: 'Te vejo la entao!', unread_count: 2, updated_at: new Date(Date.now() - 1800000).toISOString() },
+                { id: 2, phone: '(11) 91234-5678', contact_name: 'Joao Grau', last_message: 'Mano, cola aqui', unread_count: 0, updated_at: new Date(Date.now() - 5400000).toISOString() },
+                { id: 3, phone: '(11) 98765-4321', contact_name: 'Mae', last_message: 'Filho, liga pra mim', unread_count: 1, updated_at: new Date(Date.now() - 7200000).toISOString() },
+                { id: 4, phone: '(11) 3333-4444', contact_name: 'Pizzaria LS', last_message: 'Seu pedido foi confirmado', unread_count: 0, updated_at: new Date(Date.now() - 86400000).toISOString() },
+                { id: 5, phone: '(21) 98765-0000', contact_name: 'Ana Belle', last_message: 'Kkkk verdade', unread_count: 0, updated_at: new Date(Date.now() - 90000000).toISOString() },
+                { id: 6, phone: '(31) 99999-8888', contact_name: 'Pedro MG', last_message: 'Tmj irmao', unread_count: 0, updated_at: new Date(Date.now() - 172800000).toISOString() },
+                { id: 7, phone: '0800-123', contact_name: 'Operadora', last_message: 'Voce recebeu 1GB de bonus', unread_count: 0, updated_at: new Date(Date.now() - 259200000).toISOString() },
+            ]
+        },
+        sms_messages: {
+            messages: [
+                { id: 1, is_mine: false, message: 'E ai, vai no rolezinho hoje?', created_at: new Date(Date.now() - 3600000).toISOString() },
+                { id: 2, is_mine: true, message: 'Vo sim! Que horas?', created_at: new Date(Date.now() - 3480000).toISOString() },
+                { id: 3, is_mine: false, message: 'Umas 8h da noite, no Bahama Mamas', created_at: new Date(Date.now() - 3300000).toISOString() },
+                { id: 4, is_mine: true, message: 'Fechou, to dentro', created_at: new Date(Date.now() - 3120000).toISOString() },
+                { id: 5, is_mine: false, message: 'Te vejo la entao!', created_at: new Date(Date.now() - 1800000).toISOString() },
+            ]
+        },
+        sms_send: { ok: true, message: { id: Date.now(), is_mine: true, message: 'Enviado', created_at: new Date().toISOString() } },
+        sms_mark_read: { ok: true },
+        sms_delete_conversation: { ok: true },
+
         spotify_search: {
             tracks: [
                 { id: 1, name: "Vida Loka Pt. 1", artist: "Racionais MCs", youtube_id: "uOFfQhT4lGU", duration: 287, liked: false },

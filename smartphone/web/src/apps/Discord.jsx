@@ -1,371 +1,321 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { fetchBackend } from '../hooks/useNui';
-import { usePusherEvent } from '../hooks/usePusher';
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { fetchBackend } from "../hooks/useNui";
 
-const C = {
-  bg:'#313338', sidebar:'#2B2D31', panel:'#1E1F22', chat:'#313338',
-  text:'#F2F3F5', textSec:'#B5BAC1', textTer:'#949BA4', textMuted:'#6D6F78',
-  accent:'#5865F2', green:'#23A55A', red:'#F23F43', yellow:'#F0B232',
-  input:'#383A40', hover:'#35373C', mention:'#5865F233', link:'#00A8FC',
-  sep:'#3F4147', bubbleMe:'#5865F2',
-};
-const B = { background:'none',border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center' };
+// ============================================================
+// Discord App — Visual V0 pixel-perfect + Backend FiveM
+// Telas: servers | chat | create | members
+// V0 layout: 100% preservado | Backend: fetchBackend integrado
+// ============================================================
 
-const Ic = {
-  hash: <svg width="20" height="20" viewBox="0 0 24 24" fill={C.textMuted}><path d="M5.88 21l1.54-5H2l.59-2h5.42l1.18-4H3.77l.59-2h5.42L11.32 3h2l-1.54 5h4.01l1.54-5h2l-1.54 5H23l-.59 2h-5.42l-1.18 4h5.42l-.59 2h-5.42L13.68 21h-2l1.54-5H9.21L7.68 21h-2zm4.51-7h4.01l1.18-4H11.57l-1.18 4z"/></svg>,
-  send: <svg width="20" height="20" viewBox="0 0 24 24" fill="#fff"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>,
-  plus: <svg width="20" height="20" viewBox="0 0 24 24" fill={C.textSec}><path d="M12 5v14M5 12h14" stroke={C.textSec} strokeWidth="2.5" strokeLinecap="round" fill="none"/></svg>,
-  back: <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M12 19l-7-7 7-7" stroke={C.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
-  settings: <svg width="18" height="18" viewBox="0 0 24 24" fill={C.textMuted}><path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 00-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg>,
-  members: <svg width="20" height="20" viewBox="0 0 24 24" fill={C.textMuted}><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>,
-  leave: <svg width="18" height="18" viewBox="0 0 24 24" fill={C.red}><path d="M10.09 15.59L11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5a2 2 0 00-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 002 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2z"/></svg>,
-};
-
-const Avatar = ({ name, size=32, color }) => (
-  <div style={{ width:size, height:size, borderRadius:'50%', background:color||C.accent, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-    <span style={{ color:'#fff', fontSize:size*0.45, fontWeight:600 }}>{name?.[0]?.toUpperCase()||'?'}</span>
-  </div>
-);
-
-const ServerIcon = ({ server, active, onClick }) => (
-  <button onClick={onClick} style={{
-    ...B, width:48, height:48, borderRadius:active?16:24, background:active?C.accent:C.bg,
-    fontSize:20, transition:'border-radius 0.2s', position:'relative', marginBottom:4,
-  }}>
-    <span>{server.icon||server.name?.[0]?.toUpperCase()||'?'}</span>
-    {active && <div style={{ position:'absolute', left:-8, width:4, height:32, borderRadius:2, background:'#fff' }}/>}
-  </button>
-);
+// ---------- Dados fallback (100% V0) ----------
+const FALLBACK_SERVERS = [
+  { id: 1, name: "Los Santos RP", initials: "LS", color: "#5865F2", members: 2453, online: 847, unread: 12 },
+  { id: 2, name: "Policia LSPD", initials: "PD", color: "#57F287", members: 456, online: 123, unread: 3 },
+  { id: 3, name: "Mafia Italiana", initials: "MI", color: "#ED4245", members: 189, online: 67, unread: 0 },
+  { id: 4, name: "Mecanica Santos", initials: "MS", color: "#FEE75C", members: 78, online: 23, unread: 5 },
+  { id: 5, name: "Hospital Central", initials: "HC", color: "#EB459E", members: 234, online: 89, unread: 0 },
+  { id: 6, name: "Weazel News", initials: "WN", color: "#5865F2", members: 167, online: 45, unread: 1 },
+];
+const FALLBACK_CHANNELS = [
+  { id: 1, category: "INFORMACAO", channels: [{ id: "rules", name: "regras", type: "text", unread: false }, { id: "announcements", name: "anuncios", type: "text", unread: true }, { id: "welcome", name: "boas-vindas", type: "text", unread: false }] },
+  { id: 2, category: "GERAL", channels: [{ id: "general", name: "geral", type: "text", unread: true }, { id: "off-topic", name: "off-topic", type: "text", unread: false }, { id: "memes", name: "memes", type: "text", unread: true }] },
+  { id: 3, category: "VOICE", channels: [{ id: "voice-1", name: "Sala 1", type: "voice", unread: false }, { id: "voice-2", name: "Sala 2", type: "voice", unread: false }, { id: "voice-afk", name: "AFK", type: "voice", unread: false }] },
+  { id: 4, category: "ROLEPLAY", channels: [{ id: "rp-geral", name: "rp-geral", type: "text", unread: true }, { id: "historias", name: "historias", type: "text", unread: false }, { id: "eventos", name: "eventos", type: "text", unread: true }] },
+];
+const FALLBACK_MESSAGES = [
+  { id: 1, user: "Carlos_RP", color: "#5865F2", content: "Bora fazer aquele evento hoje a noite?", time: "14:32", avatar: "C" },
+  { id: 2, user: "Maria_Santos", color: "#EB459E", content: "To dentro! Que horas?", time: "14:33", avatar: "M" },
+  { id: 3, user: "Joao_Grau", color: "#57F287", content: "Pode ser as 21h, vou trazer o pessoal da mecanica", time: "14:35", avatar: "J" },
+  { id: 4, user: "Ana_Belle", color: "#FEE75C", content: "Alguem sabe se o servidor vai ter update essa semana?", time: "14:38", avatar: "A" },
+  { id: 5, user: "Pedro_Silva", color: "#ED4245", content: "Vi no Twitter que vao adicionar umas 5 motos novas", time: "14:40", avatar: "P" },
+  { id: 6, user: "Carlos_RP", color: "#5865F2", content: "Serio? Isso vai ser insano! Ja quero a Ducati", time: "14:41", avatar: "C" },
+  { id: 7, user: "Lucas_Dev", color: "#57F287", content: "Pessoal, atualizei as regras do canal #rp-geral, da uma olhada", time: "14:45", avatar: "L" },
+  { id: 8, user: "Maria_Santos", color: "#EB459E", content: "Beleza, vou ver agora. Alguem mais vem pro evento?", time: "14:47", avatar: "M" },
+];
+const FALLBACK_MEMBERS = [
+  { id: 1, name: "Carlos_RP", status: "online", role: "Admin", color: "#ED4245", activity: "Jogando GTA V" },
+  { id: 2, name: "Maria_Santos", status: "online", role: "Mod", color: "#57F287", activity: "Ouvindo Spotify" },
+  { id: 3, name: "Joao_Grau", status: "online", role: "Membro", color: "#fff", activity: "" },
+  { id: 4, name: "Ana_Belle", status: "idle", role: "Membro", color: "#fff", activity: "" },
+  { id: 5, name: "Pedro_Silva", status: "online", role: "Membro", color: "#fff", activity: "Jogando GTA V" },
+  { id: 6, name: "Lucas_Dev", status: "dnd", role: "Admin", color: "#ED4245", activity: "VS Code" },
+  { id: 7, name: "Fernanda_M", status: "offline", role: "Membro", color: "#fff", activity: "" },
+  { id: 8, name: "Thiago_BR", status: "offline", role: "Membro", color: "#fff", activity: "" },
+];
+const statusColors = { online: "#57F287", idle: "#FEE75C", dnd: "#ED4245", offline: "#80848E" };
 
 export default function Discord({ onNavigate }) {
-  const [servers, setServers] = useState([]);
-  const [activeServer, setActiveServer] = useState(null);
-  const [channels, setChannels] = useState([]);
-  const [activeChannel, setActiveChannel] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [members, setMembers] = useState([]);
-  const [myProfile, setMyProfile] = useState(null);
-  const [inputText, setInputText] = useState('');
-  const [view, setView] = useState('servers'); // servers, chat, create, members
-  const [loading, setLoading] = useState(true);
-  const [newServerName, setNewServerName] = useState('');
-  const [newServerIcon, setNewServerIcon] = useState('🎮');
-  const [inviteCode, setInviteCode] = useState('');
-  const [showMembers, setShowMembers] = useState(false);
+  const [view, setView] = useState("servers");
+  const [servers, setServers] = useState(FALLBACK_SERVERS);
+  const [selectedServer, setSelectedServer] = useState(FALLBACK_SERVERS[0]);
+  const [channels, setChannels] = useState(FALLBACK_CHANNELS);
+  const [selectedChannel, setSelectedChannel] = useState("geral");
+  const [messageText, setMessageText] = useState("");
+  const [chatMessages, setChatMessages] = useState(FALLBACK_MESSAGES);
+  const [members, setMembers] = useState(FALLBACK_MEMBERS);
+  const [expandedCategories, setExpandedCategories] = useState(new Set([1, 2, 3, 4]));
+  const [newServerName, setNewServerName] = useState("Servidor do Carlos");
   const msgEnd = useRef(null);
 
-  // Load servers
+  // ---------- Backend: carregar servers ----------
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      const r = await fetchBackend('discord_init');
-      if (r?.servers) setServers(r.servers);
-      if (r?.profile) setMyProfile(r.profile);
-      setLoading(false);
-    };
-    load();
+    (async () => {
+      const r = await fetchBackend("discord_init");
+      if (r?.servers?.length) setServers(r.servers.map((s) => ({ ...s, initials: (s.icon || s.name?.[0]?.toUpperCase() || "?"), color: s.color || "#5865F2", unread: s.unread_count || 0 })));
+    })();
   }, []);
 
-  // Load server details
-  const openServer = async (server) => {
-    setActiveServer(server);
-    const r = await fetchBackend('discord_server', { serverId: server.id });
-    if (r?.channels) { setChannels(r.channels); if (r.channels[0]) openChannel(r.channels[0], server.id); }
-    if (r?.members) setMembers(r.members);
-  };
-
-  // Load channel messages
-  const openChannel = async (channel, serverId) => {
-    setActiveChannel(channel);
-    setView('chat');
-    const r = await fetchBackend('discord_messages', { channelId: channel.id });
-    if (r?.messages) setMessages(r.messages);
-  };
-
-  // Send message
-  const handleSend = async () => {
-    const text = inputText.trim();
-    if (!text || !activeChannel) return;
-    setInputText('');
-    const opt = { id: Date.now(), message: text, username: myProfile?.username || 'Você', role_color: myProfile?.role_color || '#fff', created_at: new Date().toISOString(), _pending: true };
-    setMessages(p => [...p, opt]);
-    const r = await fetchBackend('discord_send', { channelId: activeChannel.id, message: text });
-    if (r?.ok && r?.message) setMessages(p => p.map(m => m.id === opt.id ? { ...r.message, _pending: false } : m));
-  };
-
-  // Create server
-  const createServer = async () => {
-    if (!newServerName.trim()) return;
-    const r = await fetchBackend('discord_create_server', { name: newServerName.trim(), icon: newServerIcon });
-    if (r?.ok && r?.server) { setServers(p => [...p, r.server]); setNewServerName(''); setView('servers'); openServer(r.server); }
-  };
-
-  // Join by invite
-  const joinServer = async () => {
-    if (!inviteCode.trim()) return;
-    const r = await fetchBackend('discord_join', { invite: inviteCode.trim() });
-    if (r?.ok && r?.server) { setServers(p => [...p, r.server]); setInviteCode(''); setView('servers'); openServer(r.server); }
-    if (r?.error) alert(r.error);
-  };
-
-  // Leave server
-  const leaveServer = async () => {
-    if (!activeServer) return;
-    if (!confirm(`Sair de ${activeServer.name}?`)) return;
-    const r = await fetchBackend('discord_leave', { serverId: activeServer.id });
-    if (r?.ok) { setServers(p => p.filter(s => s.id !== activeServer.id)); setActiveServer(null); setActiveChannel(null); setView('servers'); }
-  };
-
-  // Pusher: new messages
-  usePusherEvent('DISCORD_MESSAGE', useCallback((d) => {
-    if (activeChannel && d.channelId === activeChannel.id) {
-      setMessages(p => { if (p.find(m => m.id === d.id)) return p; return [...p, d]; });
+  // ---------- Backend: abrir server ----------
+  const openServer = useCallback(async (server) => {
+    setSelectedServer(server);
+    const r = await fetchBackend("discord_server", { serverId: server.id });
+    if (r?.channels?.length) {
+      const mapped = [{ id: 1, category: "CANAIS", channels: r.channels.map((c) => ({ id: c.id, name: c.name, type: c.type || "text", unread: !!c.unread })) }];
+      setChannels(mapped);
     }
-  }, [activeChannel]));
+    if (r?.members?.length) setMembers(r.members.map((m) => ({ id: m.id, name: m.username || m.name, status: m.status || "online", role: m.role || "Membro", color: m.role_color || "#fff", activity: m.activity || "" })));
+  }, []);
 
-  useEffect(() => { msgEnd.current?.scrollIntoView({ behavior:'smooth' }); }, [messages]);
+  // ---------- Backend: abrir canal ----------
+  const openChannel = useCallback(async (channelName, channelId) => {
+    setSelectedChannel(channelName);
+    setView("chat");
+    const r = await fetchBackend("discord_messages", { channelId: channelId || channelName });
+    if (r?.messages?.length) {
+      setChatMessages(r.messages.map((m) => ({ id: m.id, user: m.username || "?", color: m.role_color || "#5865F2", content: m.message || m.content || "", time: m.created_at ? new Date(m.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "", avatar: (m.username || "?").charAt(0) })));
+    }
+  }, []);
 
-  const formatTime = (d) => { if (!d) return ''; return new Date(d).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' }); };
-  const formatDay = (d) => { if (!d) return ''; const dt = new Date(d); const now = new Date(); const diff = Math.floor((now - dt) / 86400000); if (diff === 0) return 'Hoje'; if (diff === 1) return 'Ontem'; return dt.toLocaleDateString('pt-BR'); };
+  // ---------- Backend: enviar msg ----------
+  const sendMessage = useCallback(async () => {
+    if (!messageText.trim()) return;
+    const newMsg = { id: Date.now(), user: "Voce", color: "#5865F2", content: messageText, time: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }), avatar: "V" };
+    setChatMessages((prev) => [...prev, newMsg]);
+    const text = messageText;
+    setMessageText("");
+    await fetchBackend("discord_send", { channelId: selectedChannel, message: text });
+  }, [messageText, selectedChannel]);
 
-  // ===== CREATE SERVER =====
-  if (view === 'create') return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ padding:'14px 16px', background:C.panel, display:'flex', alignItems:'center', gap:12 }}>
-        <button onClick={() => setView('servers')} style={B}>{Ic.back}</button>
-        <span style={{ color:C.text, fontSize:17, fontWeight:600 }}>Criar servidor</span>
-      </div>
-      <div style={{ flex:1, padding:20, display:'flex', flexDirection:'column', gap:16 }}>
-        <div style={{ textAlign:'center', marginBottom:8 }}>
-          <div style={{ color:C.text, fontSize:22, fontWeight:700, marginBottom:4 }}>Personalize seu servidor</div>
-          <div style={{ color:C.textSec, fontSize:14 }}>Escolha um ícone e nome para começar</div>
+  // ---------- Backend: criar server ----------
+  const createServer = useCallback(async () => {
+    if (!newServerName.trim()) return;
+    const r = await fetchBackend("discord_create_server", { name: newServerName.trim(), icon: newServerName.trim().charAt(0) });
+    if (r?.ok && r?.server) {
+      setServers((p) => [...p, { ...r.server, initials: r.server.name?.charAt(0) || "?", color: "#5865F2", unread: 0 }]);
+    }
+    setNewServerName("");
+    setView("servers");
+  }, [newServerName]);
+
+  const toggleCategory = useCallback((catId) => {
+    setExpandedCategories((prev) => { const next = new Set(prev); if (next.has(catId)) next.delete(catId); else next.add(catId); return next; });
+  }, []);
+
+  useEffect(() => { msgEnd.current?.scrollIntoView({ behavior: "smooth" }); }, [chatMessages]);
+
+  // ============================================================
+  // MEMBERS VIEW (100% V0)
+  // ============================================================
+  if (view === "members") {
+    const onlineMembers = members.filter((m) => m.status !== "offline");
+    const offlineMembers = members.filter((m) => m.status === "offline");
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#2B2D31", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "12px 16px", borderBottom: "1px solid #1E1F22" }}>
+          <button onClick={() => setView("chat")} style={{ background: "none", border: "none", cursor: "pointer", marginRight: 12, display: "flex" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span style={{ color: "#F2F3F5", fontSize: 16, fontWeight: 700 }}>Membros</span>
+          <span style={{ color: "#80848E", fontSize: 14, marginLeft: 8 }}>{members.length}</span>
         </div>
-        {/* Icon picker */}
-        <div style={{ display:'flex', gap:8, justifyContent:'center', flexWrap:'wrap' }}>
-          {['🎮','⚔️','🏎️','💀','🔥','🌙','👑','🎯','🐉','💎'].map(e => (
-            <button key={e} onClick={() => setNewServerIcon(e)} style={{
-              ...B, width:44, height:44, borderRadius:22, fontSize:22,
-              background: newServerIcon === e ? C.accent : C.input,
-              border: newServerIcon === e ? '2px solid #fff' : '2px solid transparent',
-            }}>{e}</button>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <div style={{ padding: "12px 16px 4px" }}><span style={{ color: "#80848E", fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>ONLINE — {onlineMembers.length}</span></div>
+          {onlineMembers.map((member) => (
+            <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", cursor: "pointer" }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#5865F2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff" }}>{member.name.charAt(0)}</div>
+                <div style={{ position: "absolute", bottom: -1, right: -1, width: 12, height: 12, borderRadius: "50%", background: statusColors[member.status], border: "3px solid #2B2D31" }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: member.color, fontSize: 14, fontWeight: 600 }}>{member.name}</div>
+                {member.activity && <div style={{ color: "#80848E", fontSize: 12, marginTop: 1 }}>{member.activity}</div>}
+              </div>
+              <span style={{ color: "#80848E", fontSize: 10, fontWeight: 600, background: "#1E1F22", padding: "2px 6px", borderRadius: 4 }}>{member.role}</span>
+            </div>
+          ))}
+          <div style={{ padding: "12px 16px 4px" }}><span style={{ color: "#80848E", fontSize: 12, fontWeight: 600, letterSpacing: 0.5 }}>OFFLINE — {offlineMembers.length}</span></div>
+          {offlineMembers.map((member) => (
+            <div key={member.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "8px 16px", opacity: 0.5 }}>
+              <div style={{ position: "relative" }}>
+                <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#5865F2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff" }}>{member.name.charAt(0)}</div>
+                <div style={{ position: "absolute", bottom: -1, right: -1, width: 12, height: 12, borderRadius: "50%", background: statusColors[member.status], border: "3px solid #2B2D31" }} />
+              </div>
+              <div><div style={{ color: "#80848E", fontSize: 14, fontWeight: 600 }}>{member.name}</div></div>
+            </div>
           ))}
         </div>
-        <div>
-          <label style={{ color:C.textSec, fontSize:12, fontWeight:600, textTransform:'uppercase', marginBottom:6, display:'block' }}>Nome do servidor</label>
-          <input type="text" placeholder="Ex: Facção do Norte" value={newServerName} onChange={e => setNewServerName(e.target.value)}
-            style={{ width:'100%', background:C.input, border:'none', borderRadius:4, padding:'12px', color:C.text, fontSize:15, fontFamily:'inherit', outline:'none', boxSizing:'border-box' }} />
-        </div>
-        <button onClick={createServer} disabled={!newServerName.trim()} style={{
-          width:'100%', padding:'14px', borderRadius:4, border:'none', cursor:'pointer',
-          background: newServerName.trim() ? C.accent : C.input, color:'#fff', fontSize:15, fontWeight:600,
-          opacity: newServerName.trim() ? 1 : 0.4,
-        }}>Criar</button>
+      </div>
+    );
+  }
 
-        <div style={{ borderTop:`1px solid ${C.sep}`, paddingTop:16, marginTop:8 }}>
-          <div style={{ color:C.text, fontSize:15, fontWeight:600, marginBottom:8 }}>Ou entrar com convite</div>
-          <div style={{ display:'flex', gap:8 }}>
-            <input type="text" placeholder="Código de convite" value={inviteCode} onChange={e => setInviteCode(e.target.value)}
-              style={{ flex:1, background:C.input, border:'none', borderRadius:4, padding:'10px 12px', color:C.text, fontSize:14, fontFamily:'inherit', outline:'none' }} />
-            <button onClick={joinServer} style={{ padding:'10px 16px', borderRadius:4, border:'none', cursor:'pointer', background:C.green, color:'#fff', fontSize:14, fontWeight:600 }}>Entrar</button>
+  // ============================================================
+  // CREATE SERVER VIEW (100% V0)
+  // ============================================================
+  if (view === "create") {
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#313338", display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", width: "100%", padding: "12px 16px", borderBottom: "1px solid #1E1F22" }}>
+          <button onClick={() => setView("servers")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span style={{ color: "#F2F3F5", fontSize: 16, fontWeight: 700, marginLeft: 12 }}>Criar Servidor</span>
+        </div>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "0 32px" }}>
+          <div style={{ width: 80, height: 80, borderRadius: "50%", border: "2px dashed #5865F2", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width={36} height={36} viewBox="0 0 24 24" fill="none" stroke="#5865F2" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
           </div>
+          <div style={{ color: "#F2F3F5", fontSize: 20, fontWeight: 800, textAlign: "center" }}>Crie seu servidor</div>
+          <div style={{ color: "#B5BAC1", fontSize: 14, textAlign: "center", lineHeight: 1.5 }}>Seu servidor e onde voce e seus amigos podem conversar. Crie o seu e comece a falar.</div>
+          <div style={{ width: "100%", marginTop: 16 }}>
+            <label style={{ color: "#B5BAC1", fontSize: 12, fontWeight: 700, letterSpacing: 0.5, marginBottom: 8, display: "block" }}>NOME DO SERVIDOR</label>
+            <input value={newServerName} onChange={(e) => setNewServerName(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 4, background: "#1E1F22", border: "none", outline: "none", color: "#F2F3F5", fontSize: 15, boxSizing: "border-box" }} />
+          </div>
+          <button onClick={createServer} style={{ width: "100%", padding: "12px 0", borderRadius: 4, background: "#5865F2", border: "none", color: "#fff", fontSize: 15, fontWeight: 600, cursor: "pointer", marginTop: 8 }}>Criar Servidor</button>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // ===== MEMBERS VIEW =====
-  if (view === 'members' && activeServer) return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      <div style={{ padding:'14px 16px', background:C.panel, display:'flex', alignItems:'center', gap:12 }}>
-        <button onClick={() => setView('chat')} style={B}>{Ic.back}</button>
-        <span style={{ color:C.text, fontSize:17, fontWeight:600 }}>Membros — {members.length}</span>
-      </div>
-      <div style={{ flex:1, overflow:'auto', padding:'8px 0' }}>
-        {/* Group by role */}
-        {['dono','admin','moderador','membro'].map(role => {
-          const roleMembers = members.filter(m => m.role === role);
-          if (roleMembers.length === 0) return null;
-          return (
-            <div key={role}>
-              <div style={{ color:C.textMuted, fontSize:11, fontWeight:700, textTransform:'uppercase', padding:'12px 16px 4px', letterSpacing:0.5 }}>
-                {role} — {roleMembers.length}
-              </div>
-              {roleMembers.map(m => (
-                <div key={m.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'6px 16px' }}>
-                  <div style={{ position:'relative' }}>
-                    <Avatar name={m.username} size={32} color={m.role_color || C.accent} />
-                    <div style={{ position:'absolute', bottom:-1, right:-1, width:10, height:10, borderRadius:5, background: m.online ? C.green : C.textMuted, border:`2px solid ${C.bg}` }} />
-                  </div>
-                  <span style={{ color:m.role_color || C.text, fontSize:14, fontWeight:500 }}>{m.username}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-
-  // ===== CHAT VIEW =====
-  if (view === 'chat' && activeServer && activeChannel) return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:C.bg }}>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 12px', background:C.bg, borderBottom:`1px solid ${C.panel}`, zIndex:2 }}>
-        <button onClick={() => { setActiveChannel(null); setView('servers'); }} style={B}>{Ic.back}</button>
-        <div style={{ display:'flex', alignItems:'center', gap:6, flex:1 }}>
-          {Ic.hash}
-          <span style={{ color:C.text, fontSize:16, fontWeight:600 }}>{activeChannel.name}</span>
-        </div>
-        <button onClick={() => setView('members')} style={{...B, padding:6}}>{Ic.members}</button>
-        <button onClick={leaveServer} style={{...B, padding:6}}>{Ic.leave}</button>
-      </div>
-
-      {/* Channel sidebar (horizontal) */}
-      {channels.length > 1 && (
-        <div style={{ display:'flex', gap:2, padding:'4px 8px', background:C.panel, overflow:'auto', scrollbarWidth:'none' }}>
-          {channels.map(ch => (
-            <button key={ch.id} onClick={() => openChannel(ch, activeServer.id)} style={{
-              ...B, gap:4, padding:'4px 10px', borderRadius:4,
-              background: activeChannel.id === ch.id ? C.hover : 'transparent',
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={activeChannel.id === ch.id ? C.text : C.textMuted}><path d="M5.88 21l1.54-5H2l.59-2h5.42l1.18-4H3.77l.59-2h5.42L11.32 3h2l-1.54 5h4.01l1.54-5h2l-1.54 5H23l-.59 2h-5.42l-1.18 4h5.42l-.59 2h-5.42L13.68 21h-2l1.54-5H9.21L7.68 21h-2zm4.51-7h4.01l1.18-4H11.57l-1.18 4z"/></svg>
-              <span style={{ color: activeChannel.id === ch.id ? C.text : C.textSec, fontSize:13, fontWeight:500, whiteSpace:'nowrap' }}>{ch.name}</span>
+  // ============================================================
+  // CHAT VIEW (100% V0)
+  // ============================================================
+  if (view === "chat") {
+    return (
+      <div style={{ width: "100%", height: "100%", background: "#313338", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 12px", borderBottom: "1px solid #1E1F22", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => setView("servers")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-          ))}
-        </div>
-      )}
-
-      {/* Messages */}
-      <div style={{ flex:1, overflow:'auto', padding:'8px 16px' }}>
-        {messages.length === 0 && (
-          <div style={{ textAlign:'center', padding:'40px 20px' }}>
-            <div style={{ fontSize:40, marginBottom:8 }}>👋</div>
-            <div style={{ color:C.text, fontSize:18, fontWeight:700 }}>Bem-vindo a #{activeChannel.name}</div>
-            <div style={{ color:C.textSec, fontSize:14, marginTop:4 }}>Este é o início do canal.</div>
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#80848E" strokeWidth="2"><path d="M4 11h16M4 11l4-4M4 11l4 4M20 13H4M20 13l-4-4M20 13l-4 4"/></svg>
+            <span style={{ color: "#F2F3F5", fontSize: 16, fontWeight: 700 }}>{selectedChannel}</span>
           </div>
-        )}
-        {messages.map((msg, i) => {
-          const showHeader = i === 0 || messages[i-1]?.username !== msg.username || (new Date(msg.created_at) - new Date(messages[i-1]?.created_at)) > 420000;
-          const showDay = i === 0 || formatDay(msg.created_at) !== formatDay(messages[i-1]?.created_at);
-          return (
-            <div key={msg.id}>
-              {showDay && (
-                <div style={{ display:'flex', alignItems:'center', gap:8, margin:'12px 0 8px' }}>
-                  <div style={{ flex:1, height:1, background:C.sep }} />
-                  <span style={{ color:C.textMuted, fontSize:11, fontWeight:600 }}>{formatDay(msg.created_at)}</span>
-                  <div style={{ flex:1, height:1, background:C.sep }} />
-                </div>
-              )}
-              <div style={{ padding: showHeader ? '4px 0' : '1px 0', opacity: msg._pending ? 0.5 : 1, marginTop: showHeader ? 8 : 0 }}>
+          <div style={{ display: "flex", gap: 16 }}>
+            <button onClick={() => setView("members")} style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </button>
+            <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </button>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+          {chatMessages.map((msg, i) => {
+            const showHeader = i === 0 || chatMessages[i - 1].user !== msg.user;
+            return (
+              <div key={msg.id} style={{ padding: showHeader ? "12px 16px 2px" : "2px 16px 2px 68px", display: "flex", gap: 12 }}>
                 {showHeader && (
-                  <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:1 }}>
-                    <Avatar name={msg.username} size={36} color={msg.role_color || C.accent} />
-                    <div>
-                      <span style={{ color:msg.role_color || C.text, fontSize:14, fontWeight:600, marginRight:8 }}>{msg.username}</span>
-                      <span style={{ color:C.textMuted, fontSize:11 }}>{formatTime(msg.created_at)}</span>
-                    </div>
-                  </div>
+                  <div style={{ width: 40, height: 40, borderRadius: "50%", background: msg.color, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff" }}>{msg.avatar}</div>
                 )}
-                <div style={{ paddingLeft: showHeader ? 52 : 52, color:C.text, fontSize:14, lineHeight:1.4, wordBreak:'break-word',
-                  background: msg.message?.includes('@everyone') ? C.mention : 'transparent', padding: msg.message?.includes('@everyone') ? '2px 4px 2px 52px' : undefined, borderRadius:4,
-                }}>{msg.message}</div>
+                <div style={{ flex: 1 }}>
+                  {showHeader && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 2 }}>
+                      <span style={{ color: msg.color, fontSize: 15, fontWeight: 600 }}>{msg.user}</span>
+                      <span style={{ color: "#80848E", fontSize: 11 }}>{msg.time}</span>
+                    </div>
+                  )}
+                  <div style={{ color: "#DBDEE1", fontSize: 14, lineHeight: 1.4 }}>{msg.content}</div>
+                </div>
               </div>
-            </div>
-          );
-        })}
-        <div ref={msgEnd} />
-      </div>
-
-      {/* Input */}
-      <div style={{ padding:'0 12px 12px' }}>
-        <div style={{ display:'flex', alignItems:'center', background:C.input, borderRadius:8, padding:'8px 12px', gap:8 }}>
-          <button style={{...B, padding:4}}>{Ic.plus}</button>
-          <input type="text" placeholder={`Conversar em #${activeChannel.name}`} value={inputText}
-            onChange={e => setInputText(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSend()}
-            style={{ flex:1, background:'transparent', border:'none', outline:'none', color:C.text, fontSize:14, fontFamily:'inherit' }} />
-          {inputText.trim() && <button onClick={handleSend} style={{...B, width:32, height:32, borderRadius:16, background:C.accent}}>{Ic.send}</button>}
+            );
+          })}
+          <div ref={msgEnd} />
+        </div>
+        <div style={{ padding: "0 12px 12px", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#383A40", borderRadius: 8, padding: "8px 12px" }}>
+            <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexShrink: 0 }}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            </button>
+            <input value={messageText} onChange={(e) => setMessageText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendMessage()} placeholder={`Mensagem #${selectedChannel}`} style={{ flex: 1, background: "none", border: "none", outline: "none", color: "#F2F3F5", fontSize: 15 }} />
+            <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexShrink: 0 }}>
+              <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // ===== SERVER LIST =====
+  // ============================================================
+  // SERVERS VIEW (default — 100% V0)
+  // ============================================================
   return (
-    <div style={{ height:'100%', display:'flex', background:C.panel }}>
-      {/* Server sidebar */}
-      <div style={{ width:66, display:'flex', flexDirection:'column', alignItems:'center', padding:'10px 0', gap:2, overflow:'auto', scrollbarWidth:'none' }}>
-        {/* DM icon */}
-        <button style={{ ...B, width:48, height:48, borderRadius:16, background:C.accent, marginBottom:4, fontSize:20 }}>💬</button>
-        <div style={{ width:32, height:2, borderRadius:1, background:C.sep, marginBottom:4 }} />
-        {servers.map(s => (
-          <ServerIcon key={s.id} server={s} active={activeServer?.id === s.id} onClick={() => openServer(s)} />
+    <div style={{ width: "100%", height: "100%", background: "#1E1F22", display: "flex" }}>
+      {/* Server rail */}
+      <div style={{ width: 56, background: "#1E1F22", display: "flex", flexDirection: "column", alignItems: "center", padding: "8px 0", gap: 4, overflowY: "auto", flexShrink: 0 }}>
+        <button onClick={() => onNavigate?.("home")} style={{ width: 44, height: 44, borderRadius: "50%", background: "#313338", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 4 }}>
+          <svg width={24} height={24} viewBox="0 0 24 24" fill="#5865F2"><path d="M19.73 4.87l-15.5 6.37a.5.5 0 00.01.95l4.78 1.71a.5.5 0 00.45-.07L19.73 4.87zM19.73 4.87L10.5 15.12a.5.5 0 00-.07.45l1.71 4.78a.5.5 0 00.95.01l6.37-15.5z"/></svg>
+        </button>
+        <div style={{ width: 32, height: 2, borderRadius: 1, background: "#35363C", marginBottom: 4 }} />
+        {servers.map((server) => (
+          <button key={server.id} onClick={() => { setSelectedServer(server); openServer(server); setView("chat"); }} style={{ width: 44, height: 44, borderRadius: selectedServer.id === server.id ? 14 : "50%", background: server.color, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff", transition: "border-radius 0.2s", position: "relative" }}>
+            {server.initials || server.name?.charAt(0)}
+            {server.unread > 0 && (
+              <div style={{ position: "absolute", bottom: -2, right: -2, minWidth: 16, height: 16, borderRadius: 8, background: "#ED4245", border: "3px solid #1E1F22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#fff", padding: "0 4px" }}>{server.unread}</div>
+            )}
+          </button>
         ))}
-        {/* Add server */}
-        <button onClick={() => setView('create')} style={{
-          ...B, width:48, height:48, borderRadius:24, background:C.bg, marginTop:4,
-          border:`2px dashed ${C.sep}`,
-        }}>{Ic.plus}</button>
+        <button onClick={() => setView("create")} style={{ width: 44, height: 44, borderRadius: "50%", background: "#313338", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="#57F287" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
-
-      {/* Server content / Home */}
-      <div style={{ flex:1, borderRadius:'12px 0 0 0', background:C.bg, display:'flex', flexDirection:'column', overflow:'hidden' }}>
-        {activeServer ? (
-          <>
-            {/* Server name header */}
-            <div style={{ padding:'14px 16px', borderBottom:`1px solid ${C.panel}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <span style={{ color:C.text, fontSize:16, fontWeight:700 }}>{activeServer.name}</span>
-              <button onClick={() => setView('members')} style={{...B, padding:4}}>{Ic.settings}</button>
-            </div>
-            {/* Channel list */}
-            <div style={{ padding:'8px 8px 4px' }}>
-              <div style={{ color:C.textMuted, fontSize:11, fontWeight:700, textTransform:'uppercase', padding:'4px 8px', letterSpacing:0.5 }}>Canais de texto</div>
-            </div>
-            <div style={{ flex:1, overflow:'auto', padding:'0 8px' }}>
-              {channels.map(ch => (
-                <button key={ch.id} onClick={() => openChannel(ch, activeServer.id)} style={{
-                  ...B, width:'100%', gap:6, padding:'6px 10px', borderRadius:4, justifyContent:'flex-start',
-                  background: activeChannel?.id === ch.id ? C.hover : 'transparent',
-                }}>
-                  {Ic.hash}
-                  <span style={{ color: activeChannel?.id === ch.id ? C.text : C.textSec, fontSize:14, fontWeight:activeChannel?.id === ch.id ? 600 : 400 }}>{ch.name}</span>
+      {/* Channel list */}
+      <div style={{ flex: 1, background: "#2B2D31", display: "flex", flexDirection: "column", borderTopLeftRadius: 8 }}>
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid #1E1F22", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "#F2F3F5", fontSize: 16, fontWeight: 700 }}>{selectedServer.name}</span>
+          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto", padding: "8px 0" }}>
+          {channels.map((category) => (
+            <div key={category.id}>
+              <button onClick={() => toggleCategory(category.id)} style={{ display: "flex", alignItems: "center", gap: 4, padding: "8px 8px 4px 4px", background: "none", border: "none", cursor: "pointer", width: "100%" }}>
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="#80848E" strokeWidth="2" style={{ transform: expandedCategories.has(category.id) ? "rotate(0)" : "rotate(-90deg)", transition: "transform 0.15s" }}><polyline points="6 9 12 15 18 9"/></svg>
+                <span style={{ color: "#80848E", fontSize: 11, fontWeight: 700, letterSpacing: 0.5 }}>{category.category}</span>
+              </button>
+              {expandedCategories.has(category.id) && category.channels.map((ch) => (
+                <button key={ch.id} onClick={() => openChannel(ch.name, ch.id)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 8px 6px 16px", width: "100%", background: selectedChannel === ch.name ? "#35363C" : "none", border: "none", cursor: "pointer", borderRadius: 4, margin: "0 4px" }}>
+                  {ch.type === "voice" ? (
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#80848E" strokeWidth="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                  ) : (
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#80848E" strokeWidth="2"><path d="M4 11h16M4 11l4-4M4 11l4 4M20 13H4M20 13l-4-4M20 13l-4 4"/></svg>
+                  )}
+                  <span style={{ color: ch.unread ? "#F2F3F5" : "#80848E", fontSize: 14, fontWeight: ch.unread ? 600 : 400 }}>{ch.name}</span>
+                  {ch.unread && <div style={{ marginLeft: "auto", width: 8, height: 8, borderRadius: "50%", background: "#F2F3F5" }} />}
                 </button>
               ))}
             </div>
-            {/* User bar */}
-            <div style={{ padding:'8px 10px', background:C.panel, display:'flex', alignItems:'center', gap:8 }}>
-              <Avatar name={myProfile?.username} size={28} color={myProfile?.role_color || C.green} />
-              <div style={{ flex:1 }}>
-                <div style={{ color:C.text, fontSize:13, fontWeight:500 }}>{myProfile?.username || '...'}</div>
-                <div style={{ color:C.textMuted, fontSize:10 }}>Online</div>
-              </div>
-              <button style={{...B, padding:4}}>{Ic.settings}</button>
-            </div>
-          </>
-        ) : (
-          /* No server selected / Home */
-          <div style={{ flex:1, display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:24 }}>
-            {loading ? (
-              <div style={{ width:24, height:24, border:`2px solid ${C.sep}`, borderTopColor:C.accent, borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
-            ) : servers.length === 0 ? (
-              <>
-                <div style={{ fontSize:48, marginBottom:12 }}>🎮</div>
-                <div style={{ color:C.text, fontSize:18, fontWeight:700, marginBottom:4 }}>Nenhum servidor</div>
-                <div style={{ color:C.textSec, fontSize:14, textAlign:'center', marginBottom:16 }}>Crie ou entre em um servidor para começar</div>
-                <button onClick={() => setView('create')} style={{
-                  padding:'12px 24px', borderRadius:4, border:'none', cursor:'pointer',
-                  background:C.accent, color:'#fff', fontSize:15, fontWeight:600,
-                }}>Criar servidor</button>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize:36, marginBottom:8 }}>👈</div>
-                <div style={{ color:C.textSec, fontSize:15 }}>Selecione um servidor</div>
-              </>
-            )}
+          ))}
+        </div>
+        {/* User bar (100% V0) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: "#232428" }}>
+          <div style={{ position: "relative" }}>
+            <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#5865F2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: "#fff" }}>V</div>
+            <div style={{ position: "absolute", bottom: -1, right: -1, width: 10, height: 10, borderRadius: "50%", background: "#57F287", border: "2px solid #232428" }} />
           </div>
-        )}
+          <div style={{ flex: 1 }}>
+            <div style={{ color: "#F2F3F5", fontSize: 13, fontWeight: 600 }}>Carlos_RP</div>
+            <div style={{ color: "#80848E", fontSize: 11 }}>Online</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="#B5BAC1"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2" fill="none" stroke="#B5BAC1" strokeWidth="2"/><line x1="12" y1="19" x2="12" y2="23" stroke="#B5BAC1" strokeWidth="2"/></svg>
+            </button>
+            <button style={{ background: "none", border: "none", cursor: "pointer", display: "flex" }}>
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="#B5BAC1" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+          </div>
+        </div>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
 }
